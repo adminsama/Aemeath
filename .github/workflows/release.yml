@@ -1,0 +1,83 @@
+name: Build and publish theme release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v1.8.5"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Validate manifest and build package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="${{ inputs.tag }}"
+          fi
+
+          version="$(node -p "require('./komari-theme.json').version")"
+          expected="${tag#v}"
+          if [[ "$version" != "$expected" ]]; then
+            echo "Manifest version $version does not match tag $tag" >&2
+            exit 1
+          fi
+
+          test -f komari-theme.json
+          test -f dist/index.html
+          test -f preview.png
+          test -f dist/assets/aemeath-v${version}.css
+          test -f dist/assets/aemeath-v${version}.js
+          if find . -type f -name '*.sh' -print -quit | grep -q .; then
+            echo "Shell scripts are not allowed in the release source" >&2
+            exit 1
+          fi
+
+          asset="aemeath-komari-theme-${tag}.zip"
+          rm -f "$asset"
+          zip -q -r "$asset" README.md komari-theme.json preview.png dist
+          unzip -Z1 "$asset" > package-contents.txt
+          grep -Fxq 'komari-theme.json' package-contents.txt
+          grep -Fxq 'dist/index.html' package-contents.txt
+          if grep -Eq '(^|/)\.github/|\.sh$' package-contents.txt; then
+            echo "Release package contains forbidden files" >&2
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.package.outputs.tag }}
+          ASSET: ${{ steps.package.outputs.asset }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ASSET" --clobber
+          else
+            gh release create "$TAG" "$ASSET" \
+              --title "Aemeath ${TAG#v}" \
+              --generate-notes
+          fi
