@@ -1,0 +1,914 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Komari Monitor</title>
+    <meta name="description" content="A simple server monitor tool." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="/themes/aemeath/dist/vendor/vue.global.prod.js"></script>
+    <link
+      rel="stylesheet"
+      href="/themes/aemeath/dist/assets/aemeath-v1.8.5.css"
+    />
+  </head>
+  <body>
+    <div
+      id="app"
+      v-cloak
+      class="shell"
+      :data-appearance="appearance"
+      :lang="language"
+    >
+      <div class="starfield" aria-hidden="true">
+        <i
+          v-for="star in stars"
+          :key="star.id"
+          :style="{'--x':star.x,'--y':star.y,'--size':star.size,'--star':star.color,'--duration':star.duration+'s','--delay':star.delay+'s'}"
+        ></i>
+      </div>
+      <div class="meteor-field" aria-hidden="true">
+        <i
+          v-for="meteor in meteors"
+          :key="meteor.id"
+          class="meteor"
+          :style="{'--x':meteor.x,'--y':meteor.y,'--length':meteor.length,'--angle':meteor.angle+'deg','--meteor':meteor.color,'--duration':meteor.duration+'s','--delay':meteor.delay+'s'}"
+        ></i>
+      </div>
+      <header class="topbar">
+        <a
+          class="brand"
+          href="#/overview"
+          @click="go('overview')"
+          :aria-label="t('overview')"
+          ><span class="brand-mark"></span
+          ><span
+            ><strong>{{ showSiteName ? siteName : 'AEMEATH' }}</strong
+            ><small>{{ showSiteName ? subtitle : siteName }}</small></span
+          ></a
+        >
+        <nav class="nav nav-desktop" :aria-label="t('navigation')">
+          <a
+            v-for="item in navItems"
+            :key="item.key"
+            :href="'#/'+item.key"
+            :class="{active:route===item.key}"
+            @click="go(item.key)"
+            >{{ t(item.key) }}</a
+          >
+        </nav>
+        <div class="actions">
+          <span class="link-status" :class="{live:connected}"
+            ><i></i
+            ><span>{{ connected ? t('live') : t('syncing') }}</span></span
+          ><button
+            class="tool"
+            type="button"
+            @click="toggleLanguage"
+            :title="t('language')"
+          >
+            {{ language==='zh-CN'?'EN':'中文' }}</button
+          ><button
+            class="tool"
+            type="button"
+            @click="toggleAppearance"
+            :title="t('appearance')"
+          >
+            {{ appearance==='dark'?'LIGHT':'DARK' }}
+          </button>
+        </div>
+      </header>
+      <Teleport to="body">
+        <nav
+          class="nav nav-mobile"
+          :class="'nav-count-'+navItems.length"
+          :data-appearance="appearance"
+          :aria-label="t('navigation')"
+        >
+          <a
+            v-for="item in navItems"
+            :key="'mobile-'+item.key"
+            :href="'#/'+item.key"
+            :class="{active:route===item.key}"
+            @click="go(item.key)"
+            >{{ t(item.key) }}</a
+          >
+        </nav>
+      </Teleport>
+      <main class="content">
+        <Transition name="fade" mode="out-in">
+          <section v-if="route==='overview'" key="overview">
+            <section class="hero">
+              <div class="hero-copy">
+                <div class="eyebrow">{{ t('heroEyebrow') }}</div>
+                <h1>AEMEATH<span>{{ t('heroTitle') }}</span></h1>
+                <p>{{ heroDescription }}</p>
+                <div class="signal-tags">
+                  <span
+                    >{{ t('online') }} {{ onlineCount }}/{{ nodes.length
+                    }}</span
+                  ><span>{{ signalLabel }}</span
+                  ><span>{{ signalCurrent }}</span>
+                </div>
+              </div>
+              <img
+                class="character"
+                :src="characterImage"
+                referrerpolicy="no-referrer"
+                alt="Aemeath"
+              />
+              <div class="hero-stargate" aria-hidden="true">
+                <i class="orbit outer"></i><i class="orbit inner"></i
+                ><i class="orbit vector"></i><span class="heart-core"><b></b></span>
+              </div>
+              <div class="tunneler-frame" aria-hidden="true">
+                <i class="tunneler-rail a"></i><i class="tunneler-rail b"></i
+                ><i class="tunneler-wing left"></i><i class="tunneler-wing right"></i
+                ><span class="flight-seed one"></span><span class="flight-seed two"></span
+                ><span class="flight-seed three"></span>
+              </div>
+              <div class="snowbloom" aria-hidden="true">
+                <i></i><i></i><i></i><i></i>
+              </div>
+              <div class="hero-topology" aria-hidden="true">
+                <i class="topology-line a"></i><i class="topology-line b"></i>
+                <span class="topology-caption"
+                  >STARLIT LINK / {{ onlineCount.toString().padStart(2, '0')
+                  }}</span
+                >
+              </div>
+              <svg
+                class="signal-line"
+                viewBox="0 0 305 105"
+                role="img"
+                :aria-label="signalLabel"
+                @mousemove="trackChart($event, 'hero', heroVisibleSamples, heroSignalMetric, 305, 105)"
+                @wheel.prevent="zoomChart($event, 'hero', heroChartSamples, heroSignalMetric, 305, 105)"
+                @dblclick.prevent="resetChartZoom('hero')"
+                @mouseleave="clearChartHover"
+              >
+                <path class="signal-area" :d="signalAreaPath"></path>
+                <path :d="signalPath"></path>
+                <circle :cx="signalEnd.x" :cy="signalEnd.y" r="3"></circle>
+                <line
+                  v-if="chartHover.key==='hero'"
+                  class="chart-crosshair"
+                  :x1="chartHover.x"
+                  :x2="chartHover.x"
+                  y1="8"
+                  y2="100"
+                ></line>
+                <circle
+                  v-if="chartHover.key==='hero'"
+                  class="chart-dot"
+                  :cx="chartHover.x"
+                  :cy="chartHover.y"
+                  r="3"
+                ></circle>
+              </svg>
+              <div
+                v-if="chartHover.key==='hero'"
+                class="chart-tooltip hero-tooltip"
+                :style="{left:chartHover.left+'px',top:chartHover.top+'px'}"
+              >
+                {{ chartHover.label }}<br />{{ chartHover.value }}
+              </div>
+              <span v-if="isChartZoomed('hero')" class="chart-scale hero-scale">{{ chartZoomLabel('hero') }}</span>
+              <div class="hero-foot">
+                <i></i
+                ><span
+                  >{{ connectionStatus }}</span
+                ><small>{{ t('frame') }} / {{ signalRangeLabel }}</small>
+              </div>
+            </section>
+            <section class="stats">
+              <div class="stat">
+                <strong>{{ onlineCount }}</strong
+                ><span>{{ t('onlineNodes') }}</span>
+              </div>
+              <div class="stat">
+                <strong>{{ nodes.length }}</strong
+                ><span>{{ t('nodeArray') }}</span>
+              </div>
+              <div class="stat">
+                <strong>{{ formatBytes(totalTraffic) }}</strong
+                ><span>{{ t('totalTraffic') }}</span>
+              </div>
+              <div class="stat">
+                <strong>{{ nowLabel }}</strong><span>{{ t('lastSync') }}</span>
+              </div>
+            </section>
+            <div v-if="settings.announcement" class="notice">
+              <b>NOTICE</b><span>{{ settings.announcement }}</span>
+            </div>
+            <section class="grid" :class="'node-layout-'+nodeView.replace('_','-')" style="margin-top: 29px">
+              <div>
+                <div class="page-head">
+                  <div>
+                    <h2>{{ t('nodeArray') }}</h2>
+                    <p>
+                      {{ visibleNodes.length }} / {{ nodes.length }} {{
+                      t('visible') }}
+                    </p>
+                  </div>
+                  <div class="node-actions">
+                    <span class="layout-readout">{{ t('layout'+nodeView) }}</span>
+                    <div class="view-switch" :aria-label="t('nodeLayout')">
+                      <button
+                        v-for="mode in nodeViewOptions"
+                        :key="mode"
+                        type="button"
+                        :class="{active:nodeView===mode}"
+                        :title="t('layout'+mode)"
+                        :aria-label="t('layout'+mode)"
+                        @click="setNodeView(mode)"
+                      >
+                        <span
+                          class="view-icon"
+                          :style="{'--columns':mode==='classic'?2:mode==='grid_3'?3:4}"
+                          ><i
+                            v-for="n in (mode==='classic'?4:mode==='grid_3'?6:8)"
+                            :key="n"
+                          ></i
+                        ></span>
+                      </button>
+                    </div>
+                    <div class="search">
+                      <span>/</span
+                      ><input
+                        v-model="search"
+                        :placeholder="t('search')"
+                        type="search"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="node-grid" :class="'view-'+nodeView.replace('_','-')">
+                  <a
+                    v-for="node in visibleNodes"
+                    :key="node.uuid"
+                    class="node"
+                    :class="{online:isOnline(node)}"
+                    :href="'#/node/'+node.uuid"
+                    @click="openNode(node)"
+                    :title="nodeTooltip(node)"
+                    ><div class="node-top">
+                      <i class="dot"></i>
+                      <div>
+                        <strong class="node-name"
+                          >{{ node.name || t('unnamed') }}</strong
+                        ><span class="node-meta">{{ nodeLine(node) }}</span>
+                      </div>
+                      <span class="node-state"
+                        >{{ isOnline(node)?t('linked'):t('idle') }}</span
+                      >
+                    </div>
+                    <div class="meters">
+                      <div
+                        v-for="metric in metrics(node)"
+                        :key="metric.name"
+                        class="meter"
+                      >
+                        <label
+                          :title="metric.name+' '+metric.value.toFixed(2)+'%'"
+                          ><span>{{ metric.name }}</span
+                          ><b>{{ metric.value.toFixed(0) }}%</b></label
+                        >
+                        <div class="bar">
+                          <i
+                            :class="metric.level"
+                            :style="{width:metric.value+'%'}"
+                          ></i>
+                        </div>
+                      </div></div
+                  ></a>
+                  <div v-if="!visibleNodes.length" class="empty">
+                    {{ t('empty') }}
+                  </div>
+                </div>
+              </div>
+              <aside class="side">
+                <div class="side-head">
+                  <h3>{{ t('phaseArray') }}</h3>
+                  <span>{{ allOnline?t('nominal'):t('watch') }}</span>
+                </div>
+                <div class="phase phase-stellar">
+                  <i class="axis"></i><i class="axis a"></i
+                  ><i class="axis b"></i><i class="phase-orbit"></i
+                  ><span class="phase-heart"><b></b></span
+                  ><i class="phase-star one"></i><i class="phase-star two"></i
+                  ><small>LONG VOYAGE / AEMEATH-01</small>
+                </div>
+                <div class="pairs">
+                  <div class="pair">
+                    <span>{{ t('averageCpu') }}</span
+                    ><b>{{ averageCpu.toFixed(0) }}%</b>
+                  </div>
+                  <div class="pair">
+                    <span>{{ t('averageMemory') }}</span
+                    ><b>{{ averageMemory.toFixed(0) }}%</b>
+                  </div>
+                </div>
+                <div class="telemetry">
+                  <h4>{{ t('liveTelemetry') }}</h4>
+                  <a
+                    v-for="node in telemetryNodes"
+                    :key="node.uuid"
+                    :href="'#/node/'+node.uuid"
+                    @click="openNode(node)"
+                    ><i></i><span>{{ node.name||node.uuid }}</span
+                    ><b>{{ nodeCpu(node).toFixed(0) }}% CPU</b></a
+                  >
+                </div>
+              </aside>
+            </section>
+          </section>
+
+          <section v-else-if="route==='probe'" key="probe">
+            <div class="page-head">
+              <div>
+                <h2>{{ t('probe') }}</h2>
+                <p>{{ t('probeSub') }}</p>
+              </div>
+              <button class="tool right" type="button" @click="loadProbeData">
+                {{ t('refresh') }}
+              </button>
+            </div>
+            <div class="tabs">
+              <button
+                v-for="task in tasks"
+                :key="task.id"
+                type="button"
+                :class="{active:activeTask===task.id}"
+                @click="selectTask(task.id)"
+              >
+                {{ task.name || t('unnamedTask') }}</button
+              ><span
+                v-if="!tasks.length"
+                class="empty"
+                style="padding: 8px 12px"
+                >{{ t('noTasks') }}</span
+              >
+            </div>
+            <section v-if="selectedProbeNode" ref="probeDetail" class="panel probe-detail">
+              <div class="panel-head">
+                <h3>{{ selectedProbeNode.name || selectedProbeNode.uuid }}</h3>
+                <small>{{ t('probeDetailSub') }}</small>
+                <div class="chart-controls">
+                  <button
+                    v-for="hours in [24,48]"
+                    :key="hours"
+                    type="button"
+                    :class="{active:probeDetailHours===hours}"
+                    @click="setProbeDetailHours(hours)"
+                  >
+                    {{ hours }}H
+                  </button>
+                </div>
+              </div>
+              <div
+                class="signal-chart"
+                @mousemove="trackChart($event, 'probe-detail', probeDetailVisibleSamples, 'latency')"
+                @wheel.prevent="zoomChart($event, 'probe-detail', probeDetailChartSamples, 'latency')"
+                @dblclick.prevent="resetChartZoom('probe-detail')"
+                @mouseleave="clearChartHover"
+              >
+                <span>{{ t('latencyTrace') }} / {{ probeDetailHours }}H</span>
+                <svg viewBox="0 0 600 110" preserveAspectRatio="none">
+                  <path :d="probeDetailPath"></path>
+                  <line
+                    v-if="chartHover.key==='probe-detail'"
+                    class="chart-crosshair"
+                    :x1="chartHover.x"
+                    :x2="chartHover.x"
+                    y1="8"
+                    y2="104"
+                  ></line>
+                  <circle
+                    v-if="chartHover.key==='probe-detail'"
+                    class="chart-dot"
+                    :cx="chartHover.x"
+                    :cy="chartHover.y"
+                    r="3"
+                  ></circle>
+                </svg>
+                <div
+                  v-if="chartHover.key==='probe-detail'"
+                  class="chart-tooltip"
+                  :style="{left:chartHover.left+'px',top:chartHover.top+'px'}"
+                >
+                  {{ chartHover.label }}<br />{{ chartHover.value }}
+                </div>
+                <span v-if="isChartZoomed('probe-detail')" class="chart-scale">{{ chartZoomLabel('probe-detail') }}</span>
+              </div>
+              <div class="history-summary">
+                <div>
+                  <span>{{ t('sampleCount') }}</span><b>{{ probeDetailStats.count }}</b>
+                </div>
+                <div>
+                  <span>{{ t('minLatency') }}</span><b>{{ probeDetailStats.min }}</b>
+                </div>
+                <div>
+                  <span>{{ t('averageLatency') }}</span><b>{{ probeDetailStats.avg }}</b>
+                </div>
+                <div>
+                  <span>{{ t('maxLatency') }} / {{ t('loss') }}</span><b>{{ probeDetailStats.max }} / {{ probeDetailStats.loss }}</b>
+                </div>
+              </div>
+              <div v-if="probeDetailLoading" class="empty">{{ t('loading') }}</div>
+              <div v-else-if="!probeDetailRecords.length" class="empty">{{ t('noProbeData') }}</div>
+            </section>
+            <div class="probe-layout">
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>{{ activeTaskName }}</h3>
+                  <small>{{ t('probeWindow') }}: {{ probeHours }}H</small>
+                </div>
+                <div
+                  class="signal-chart"
+                  @mousemove="trackChart($event, 'probe', probeVisibleSamples, 'latency')"
+                  @wheel.prevent="zoomChart($event, 'probe', probeChartSamples, 'latency')"
+                  @dblclick.prevent="resetChartZoom('probe')"
+                  @mouseleave="clearChartHover"
+                >
+                  <span>{{ t('latencyTrace') }} / {{ probeSourceLabel }}</span
+                  ><svg viewBox="0 0 600 110" preserveAspectRatio="none">
+                    <path :d="probePath"></path>
+                    <line
+                      v-if="chartHover.key==='probe'"
+                      class="chart-crosshair"
+                      :x1="chartHover.x"
+                      :x2="chartHover.x"
+                      y1="8"
+                      y2="104"
+                    ></line>
+                    <circle
+                      v-if="chartHover.key==='probe'"
+                      class="chart-dot"
+                      :cx="chartHover.x"
+                      :cy="chartHover.y"
+                      r="3"
+                    ></circle>
+                  </svg>
+                  <div
+                    v-if="chartHover.key==='probe'"
+                    class="chart-tooltip"
+                    :style="{left:chartHover.left+'px',top:chartHover.top+'px'}"
+                  >
+                    {{ chartHover.label }}<br />{{ chartHover.value }}
+                  </div>
+                  <span v-if="isChartZoomed('probe')" class="chart-scale">{{ chartZoomLabel('probe') }}</span>
+                </div>
+                <table class="ping-table">
+                  <thead>
+                    <tr>
+                      <th>{{ t('node') }}</th>
+                      <th>{{ t('latency') }}</th>
+                      <th>{{ t('loss') }}</th>
+                      <th>{{ t('status') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="row in probeRows"
+                      :key="row.uuid"
+                      :class="{selected:probeNodeId===row.uuid}"
+                    >
+                      <td>
+                        <button
+                          class="table-link"
+                          type="button"
+                          @click="openProbeNode(row.node)"
+                        >
+                          {{ row.node.name||row.uuid }}
+                        </button>
+                      </td>
+                      <td>
+                        {{ row.average===null?'--':row.average.toFixed(1)+' ms'
+                        }}
+                      </td>
+                      <td>{{ row.loss.toFixed(1) }}%</td>
+                      <td>
+                        <span
+                          class="state-pill"
+                          :class="{bad:row.loss>5 || !isOnline(row.node)}"
+                          >{{
+                          row.loss>5||!isOnline(row.node)?t('degraded'):t('stable')
+                          }}</span
+                        >
+                      </td>
+                    </tr>
+                    <tr v-if="!probeRows.length">
+                      <td colspan="4" class="empty">{{ t('noProbeData') }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <aside class="panel probe-side">
+                <div class="panel-head"><h3>{{ t('probeSummary') }}</h3></div>
+                <div class="probe-metric">
+                  <span>{{ t('taskInterval') }}</span
+                  ><b>{{ activeTaskObj?.interval || '--' }}<small>s</small></b>
+                </div>
+                <div class="probe-metric">
+                  <span>{{ t('averageLatency') }}</span
+                  ><b
+                    >{{ probeAverage===null?'--':probeAverage.toFixed(1)+' ms'
+                    }}</b
+                  >
+                </div>
+                <div class="probe-metric">
+                  <span>{{ t('packetLoss') }}</span
+                  ><b>{{ probeLoss.toFixed(1) }}%</b>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section v-else-if="route==='map'" key="map">
+            <div class="page-head">
+              <div>
+                <h2>{{ t('map') }}</h2>
+                <p>{{ t('mapSub') }}</p>
+              </div>
+              <div class="right">
+                <span
+                  style="
+                    color: var(--muted);
+                    font:
+                      10px &quot;DM Mono&quot;,
+                      monospace;
+                  "
+                  >{{ mappedNodes.length }} {{ t('mapped') }}</span
+                >
+              </div>
+            </div>
+            <section
+              class="world"
+              :class="{dragging:mapDrag.active}"
+              @wheel.prevent="handleMapWheel"
+              @pointerdown="startMapPan"
+              @pointermove="moveMapPan"
+              @pointerup="endMapPan"
+              @pointercancel="endMapPan"
+              @dblclick.prevent="resetMap"
+            >
+              <div class="map-jump-grid" aria-hidden="true"></div>
+              <div
+                class="map-canvas"
+                :class="{dragging:mapDrag.active}"
+                :style="{transform:mapTransform}"
+              >
+                <svg
+                  viewBox="0 0 1000 450"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    class="continent"
+                    d="M70 85l115-38 83 30 20 54-47 32-31 63-57 4-27-45-58-25zM255 259l61 16 33 61-23 97-45-16-8-66-37-44zM441 75l98-23 93 39 27 51-50 30-19 55-54 11-26-36-58-16-35-54zM516 253l74-12 87 45 29 91-50 56-73-23-29-70zM728 91l104-22 116 38 22 65-59 23-32-30-74 18-63-34zM807 261l92 13 35 55-47 39-81-20-23-51z"
+                  ></path>
+                  <path
+                    v-if="mappedNodes.length>1"
+                    class="route-line"
+                    :d="mapRoutes"
+                  ></path></svg
+                ><a
+                  v-for="item in mappedNodes"
+                  :key="item.node.uuid"
+                  class="map-point"
+                  :class="{offline:!isOnline(item.node),cluster:item.clusterSize>1}"
+                  :style="{left:item.x+'%',top:item.y+'%'}"
+                  :href="'#/node/'+item.node.uuid"
+                  @click="openNode(item.node)"
+                  :title="nodeTooltip(item.node)"
+                  ><i></i><span v-if="item.clusterSize===1 || item.clusterIndex===0"
+                    >{{ item.node.name }}<em v-if="item.clusterSize>1">+{{ item.clusterSize-1 }}</em></span
+                  ></a
+                >
+              </div>
+              <div class="map-controls" :aria-label="t('mapZoom')">
+                <button
+                  class="map-control"
+                  type="button"
+                  @click="zoomMap(0.25)"
+                  :title="t('zoomIn')"
+                >
+                  +
+                </button>
+                <button
+                  class="map-control"
+                  type="button"
+                  @click="zoomMap(-0.25)"
+                  :title="t('zoomOut')"
+                >
+                  -
+                </button>
+                <button
+                  class="map-control"
+                  type="button"
+                  @click="resetMap"
+                  :title="t('zoomReset')"
+                >
+                  &#8635;
+                </button>
+                <output class="map-scale" :aria-label="t('mapZoom')">{{ mapScaleLabel }}</output>
+              </div>
+              <div class="map-legend">
+                <span><i></i>{{ t('online') }}</span
+                ><span><i></i>{{ t('offline') }}</span>
+              </div>
+            </section>
+            <div class="map-list">
+              <a
+                v-for="node in orderedNodes"
+                :key="node.uuid"
+                :class="{off:!isOnline(node)}"
+                :href="'#/node/'+node.uuid"
+                @click="openNode(node)"
+                :title="nodeTooltip(node)"
+                ><i></i><span>{{ node.name||node.uuid }}</span
+                ><small>{{ node.region || '--' }}</small></a
+              >
+            </div>
+          </section>
+
+          <section v-else-if="route==='billing' && hasBilling" key="billing">
+            <div class="page-head">
+              <div>
+                <h2>{{ t('billing') }}</h2>
+                <p>{{ t('billingSub') }}</p>
+              </div>
+            </div>
+            <div class="billing-cards">
+              <div class="bill-card">
+                <span>{{ t('monthlySpend') }}</span><b>{{ billingHeadline }}</b>
+              </div>
+              <div class="bill-card">
+                <span>{{ t('paidNodes') }}</span><b>{{ paidNodes.length }}</b>
+              </div>
+              <div class="bill-card">
+                <span>{{ t('renewingSoon') }}</span
+                ><b>{{ expiringNodes.length }}</b>
+              </div>
+            </div>
+            <div class="billing-layout">
+              <div class="panel">
+                <div class="panel-head">
+                  <h3>{{ t('nodeCost') }}</h3>
+                  <small>{{ t('normalizedMonth') }}</small>
+                </div>
+                <div class="cost-list">
+                  <div
+                    v-for="node in billedNodes"
+                    :key="node.uuid"
+                    class="cost-row"
+                  >
+                    <div>
+                      <strong>{{ node.name||node.uuid }}</strong
+                      ><span
+                        >{{ billingCycleText(node) }} · {{ node.currency || '$'
+                        }}{{ number(node.price).toFixed(2) }}</span
+                      >
+                    </div>
+                    <b>{{ billingFor(node).label }}</b
+                    ><small>{{ expiryText(node) }}</small>
+                  </div>
+                  <div v-if="!billedNodes.length" class="empty">
+                    {{ t('noBilling') }}
+                  </div>
+                </div>
+              </div>
+              <aside class="panel">
+                <div class="panel-head"><h3>{{ t('currencyTotals') }}</h3></div>
+                <div class="currency-list">
+                  <div
+                    v-for="item in costTotals"
+                    :key="item.currency"
+                    class="currency-row"
+                  >
+                    <span>{{ item.currency }}</span
+                    ><b>{{ item.currency }}{{ item.amount.toFixed(2) }}</b>
+                  </div>
+                  <div v-if="!costTotals.length" class="empty">
+                    {{ t('noBilling') }}
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section v-else key="node">
+            <a class="back" href="#/overview" @click="go('overview')"
+              >&larr; {{ t('back') }}</a
+            >
+            <div v-if="selectedNode" class="detail-layout">
+              <div>
+                <section class="panel">
+                  <div class="detail-title">
+                    <i></i>
+                    <div>
+                      <h2>{{ selectedNode.name || selectedNode.uuid }}</h2>
+                      <p>
+                        {{ selectedNode.region || '--' }} / {{ selectedNode.os
+                        || '--' }} / {{ selectedNode.cpu_name || '--' }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="resource-grid">
+                    <div
+                      v-for="metric in detailMetrics"
+                      :key="metric.name"
+                      class="resource"
+                    >
+                      <span>{{ metric.name }}</span><b>{{ metric.value }}</b
+                      ><small>{{ metric.sub }}</small>
+                    </div>
+                  </div>
+                  <div
+                    class="panel-head"
+                    style="border-top: 1px solid var(--line)"
+                  >
+                    <h3>{{ t('historyWindow') }}</h3>
+                    <small>{{ t('historySub') }}</small>
+                    <div class="chart-controls">
+                      <button
+                        v-for="hours in [24,48]"
+                        :key="hours"
+                        type="button"
+                        :class="{active:detailHours===hours}"
+                        @click="setDetailHours(hours)"
+                      >
+                        {{ hours }}H
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    class="signal-chart"
+                    @mousemove="trackChart($event, 'detail-load', detailLoadVisibleSamples, 'cpu')"
+                    @wheel.prevent="zoomChart($event, 'detail-load', detailLoadChartSamples, 'cpu')"
+                    @dblclick.prevent="resetChartZoom('detail-load')"
+                    @mouseleave="clearChartHover"
+                  >
+                    <span>{{ t('loadTrace') }} / {{ detailHours }}H</span
+                    ><svg viewBox="0 0 600 110" preserveAspectRatio="none">
+                      <path :d="historyPath"></path>
+                      <line
+                        v-if="chartHover.key==='detail-load'"
+                        class="chart-crosshair"
+                        :x1="chartHover.x"
+                        :x2="chartHover.x"
+                        y1="8"
+                        y2="104"
+                      ></line>
+                      <circle
+                        v-if="chartHover.key==='detail-load'"
+                        class="chart-dot"
+                        :cx="chartHover.x"
+                        :cy="chartHover.y"
+                        r="3"
+                      ></circle>
+                    </svg>
+                    <div
+                      v-if="chartHover.key==='detail-load'"
+                      class="chart-tooltip"
+                      :style="{left:chartHover.left+'px',top:chartHover.top+'px'}"
+                    >
+                      {{ chartHover.label }}<br />{{ chartHover.value }}
+                    </div>
+                    <span v-if="isChartZoomed('detail-load')" class="chart-scale">{{ chartZoomLabel('detail-load') }}</span>
+                  </div>
+                  <div
+                    class="signal-chart"
+                    @mousemove="trackChart($event, 'detail-ping', detailPingVisibleSamples, 'latency')"
+                    @wheel.prevent="zoomChart($event, 'detail-ping', detailPingChartSamples, 'latency')"
+                    @dblclick.prevent="resetChartZoom('detail-ping')"
+                    @mouseleave="clearChartHover"
+                  >
+                    <span>{{ t('latencyTrace') }} / {{ detailHours }}H</span
+                    ><svg viewBox="0 0 600 110" preserveAspectRatio="none">
+                      <path :d="detailPingPath"></path>
+                      <line
+                        v-if="chartHover.key==='detail-ping'"
+                        class="chart-crosshair"
+                        :x1="chartHover.x"
+                        :x2="chartHover.x"
+                        y1="8"
+                        y2="104"
+                      ></line>
+                      <circle
+                        v-if="chartHover.key==='detail-ping'"
+                        class="chart-dot"
+                        :cx="chartHover.x"
+                        :cy="chartHover.y"
+                        r="3"
+                      ></circle>
+                    </svg>
+                    <div
+                      v-if="chartHover.key==='detail-ping'"
+                      class="chart-tooltip"
+                      :style="{left:chartHover.left+'px',top:chartHover.top+'px'}"
+                    >
+                      {{ chartHover.label }}<br />{{ chartHover.value }}
+                    </div>
+                    <span v-if="isChartZoomed('detail-ping')" class="chart-scale">{{ chartZoomLabel('detail-ping') }}</span>
+                  </div>
+                  <div class="history-summary">
+                    <div>
+                      <span>{{ t('sampleCount') }}</span
+                      ><b>{{ detailPingStats.count }}</b>
+                    </div>
+                    <div>
+                      <span>{{ t('minLatency') }}</span
+                      ><b>{{ detailPingStats.min }}</b>
+                    </div>
+                    <div>
+                      <span>{{ t('averageLatency') }}</span
+                      ><b>{{ detailPingStats.avg }}</b>
+                    </div>
+                    <div>
+                      <span>{{ t('maxLatency') }} / {{ t('loss') }}</span
+                      ><b
+                        >{{ detailPingStats.max }} / {{ detailPingStats.loss
+                        }}</b
+                      >
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <aside class="panel">
+                <div class="panel-head"><h3>{{ t('nodeInfo') }}</h3></div>
+                <div class="info-list">
+                  <div class="info">
+                    <span>CPU</span
+                    ><b
+                      >{{ selectedNode.cpu_cores || '--' }} {{ t('cores') }}</b
+                    >
+                  </div>
+                  <div class="info">
+                    <span>{{ t('cpuModel') }}</span
+                    ><b :title="hardwareValue('cpu')"
+                      >{{ hardwareValue('cpu') }}</b
+                    >
+                  </div>
+                  <div class="info">
+                    <span>RAM</span
+                    ><b>{{ formatBytes(selectedNode.mem_total) }}</b>
+                  </div>
+                  <div class="info">
+                    <span>DISK</span
+                    ><b>{{ formatBytes(selectedNode.disk_total) }}</b>
+                  </div>
+                  <div class="info">
+                    <span>{{ t('uptime') }}</span
+                    ><b>{{ uptime(nodeLive(selectedNode).uptime) }}</b>
+                  </div>
+                  <div class="info">
+                    <span>{{ t('trafficLimit') }}</span
+                    ><b
+                      >{{
+                      selectedNode.traffic_limit?formatBytes(selectedNode.traffic_limit):t('unlimited')
+                      }}</b
+                    >
+                  </div>
+                  <div v-if="hasBilling" class="info">
+                    <span>{{ t('price') }}</span
+                    ><b>{{ billingFor(selectedNode).label }}</b>
+                  </div>
+                </div>
+                <div
+                  class="panel-head"
+                  style="border-top: 1px solid var(--line)"
+                >
+                  <h3>{{ t('hardwareProfile') }}</h3>
+                  <small>{{ t('reportedFields') }}</small>
+                </div>
+                <div class="hardware-list">
+                  <div
+                    v-for="item in hardwareInfo"
+                    :key="item.label"
+                    class="hardware-item"
+                  >
+                    <span>{{ item.label }}</span
+                    ><b :title="item.value">{{ item.value }}</b>
+                  </div>
+                </div>
+              </aside>
+            </div>
+            <div v-else class="empty">{{ t('nodeNotFound') }}</div>
+          </section>
+        </Transition>
+        <footer class="footer">
+          <span>Powered by Komari Monitor.</span
+          ><span>{{ t('footer') }} / AEMEATH SIGNAL ARRAY</span>
+        </footer>
+      </main>
+    </div>
+    <script src="/themes/aemeath/dist/assets/aemeath-v1.8.5.js"></script>
+  </body>
+</html>

@@ -1,0 +1,154 @@
+{
+  "name": "爱弥斯 / Aemeath",
+  "short": "aemeath",
+  "description": "基于 Vue 3 的爱弥斯主题监控面板，包含响应式实时状态、平滑过渡与多端适配。",
+  "version": "1.8.5",
+  "author": "Ronana / 夜灭",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "Sparkles",
+    "name": "爱弥斯主题设置",
+    "data": [
+      {
+        "name": "视觉与文案",
+        "type": "title"
+      },
+      {
+        "key": "character_image",
+        "name": "角色图片链接",
+        "type": "string",
+        "default": "/themes/aemeath/dist/assets/aemeath.png",
+        "help": "默认使用主题包内图片；也可填写支持 HTTPS 直链且允许跨域展示的 PNG/WebP 图片。"
+      },
+      {
+        "key": "panel_subtitle",
+        "name": "面板副标题",
+        "type": "string",
+        "default": "AEMEATH / NODE OBSERVATORY",
+        "help": "显示在站点名称下方。"
+      },
+      {
+        "key": "hero_text_zh",
+        "name": "首屏说明（中文）",
+        "type": "string",
+        "default": "但愿我会让你感到骄傲，但愿我没有让你失望。",
+        "help": "语言切换为中文时显示；留空将使用主题默认文案。"
+      },
+      {
+        "key": "hero_text_en",
+        "name": "首屏说明（英文）",
+        "type": "string",
+        "default": "I hope I made you proud. I hope I did not let you down.",
+        "help": "语言切换为英文时显示；留空将使用主题默认文案。"
+      },
+      {
+        "key": "background_mode",
+        "name": "背景模式",
+        "type": "select",
+        "options": "circuit,starfield",
+        "default": "starfield",
+        "help": "starfield 为默认的随机星光与流星背景；circuit 为电路板背景。"
+      },
+      {
+        "name": "导航与信号",
+        "type": "title"
+      },
+      {
+        "key": "show_site_name",
+        "name": "导航栏显示站点名称",
+        "type": "switch",
+        "default": true,
+        "help": "关闭后显示 AEMEATH 主题名称。"
+      },
+      {
+        "key": "node_sort_mode",
+        "name": "节点排序",
+        "type": "select",
+        "options": "weight_desc,weight_asc,backend",
+        "default": "weight_desc",
+        "help": "weight_desc 按后台权重从大到小；weight_asc 从小到大；backend 保留接口返回顺序。"
+      },
+      {
+        "key": "node_display_mode",
+        "name": "节点阵列布局",
+        "type": "select",
+        "options": "classic,grid_3,grid_4",
+        "default": "classic",
+        "help": "classic 保留原有双列布局；grid_3 与 grid_4 分别为三列和四列网格。访客可在前台临时切换，不会修改后台设置。"
+      },
+      {
+        "key": "hero_signal_metric",
+        "name": "首页信号线指标",
+        "type": "select",
+        "options": "cpu,ram,traffic",
+        "default": "cpu",
+        "help": "cpu 为 CPU，ram 为内存，traffic 为上下行总速率。"
+      },
+      {
+        "key": "hero_signal_hours",
+        "name": "首页信号线历史小时数",
+        "type": "number",
+        "default": 24,
+        "help": "支持 1-48 小时；未启用历史记录时自动显示实时聚合。"
+      },
+      {
+        "key": "hero_signal_nodes",
+        "name": "首页信号线参与节点",
+        "type": "nodes",
+        "default": [],
+        "help": "留空时聚合全部可见节点。"
+      },
+      {
+        "name": "拨测数据来源",
+        "type": "title"
+      },
+      {
+        "key": "probe_history_hours",
+        "name": "拨测综合轨迹小时数",
+        "type": "number",
+        "default": 24,
+        "help": "主拨测页综合延迟轨迹的时间范围，支持 1-48 小时。"
+      },
+      {
+        "key": "probe_display_nodes",
+        "name": "拨测综合轨迹节点",
+        "type": "nodes",
+        "default": [],
+        "help": "留空时采用公开任务中全部可用节点；填写后只采用指定节点，并在页面标注来源。"
+      },
+      {
+        "key": "announcement",
+        "name": "公告内容",
+        "type": "string",
+        "default": "",
+        "help": "留空即可隐藏公告栏。"
+      },
+      {
+        "name": "告警阈值",
+        "type": "title"
+      },
+      {
+        "key": "cpu_alert",
+        "name": "CPU (%)",
+        "type": "number",
+        "default": 85,
+        "help": "超过此值时资源条标为告警色。"
+      },
+      {
+        "key": "memory_alert",
+        "name": "内存 (%)",
+        "type": "number",
+        "default": 85,
+        "help": "超过此值时资源条标为告警色。"
+      },
+      {
+        "key": "disk_alert",
+        "name": "磁盘 (%)",
+        "type": "number",
+        "default": 90,
+        "help": "超过此值时资源条标为告警色。"
+      }
+    ]
+  }
+}
