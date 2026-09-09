@@ -2,6 +2,8 @@
 
 > 面向 [Komari Monitor](https://github.com/komari-monitor/komari) 的 Vue 3 主题。以《鸣潮》爱弥斯的星炬、长航星辉、绯色心核和跃迁航迹为视觉线索，构建一个以实时节点状态为中心的观测界面。
 
+项目地址：[github.com/adminsama/Aemeath](https://github.com/adminsama/Aemeath)
+
 ![爱弥斯主题预览](./preview.png)
 
 ## 特性

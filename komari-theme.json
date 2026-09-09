@@ -4,6 +4,7 @@
   "description": "基于 Vue 3 的爱弥斯主题监控面板，包含响应式实时状态、平滑过渡与多端适配。",
   "version": "1.8.5",
   "author": "Ronana / 夜灭",
+  "url": "https://github.com/adminsama/Aemeath",
   "preview": "preview.png",
   "configuration": {
     "type": "managed",
