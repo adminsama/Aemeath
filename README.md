@@ -4,8 +4,6 @@
 
 项目地址：[github.com/adminsama/Aemeath](https://github.com/adminsama/Aemeath)
 
-GitHub Release 会由 Actions 自动构建。推送形如 `v1.9.0` 的 Git 标签后，工作流会校验 `komari-theme.json` 的版本号，生成可直接安装的主题 ZIP，并上传到对应的 [Releases](https://github.com/adminsama/Aemeath/releases)。
-
 ![爱弥斯主题预览](./preview.png)
 
 ## 特性
@@ -20,26 +18,7 @@ GitHub Release 会由 Actions 自动构建。推送形如 `v1.9.0` 的 Git 标�
 - **优雅切换**：双列、三列、四列阵列通过 FLIP 重排动画过渡，保留节点卡片身份和当前数据，不会闪烁重建。
 - **多端布局**：桌面、平板和手机均有独立响应式布局。手机导航通过 Vue Teleport 固定在视口底部，不参与顶部栏排版；星野模式带有随机闪烁星光与间歇流星。
 - **可配置主题**：中英文、明暗外观、人物图片、站点名称、背景模式、节点排序、默认网格、首屏文案与信号指标均可在 Komari 后台配置。
-
-## 安装
-
-1. 下载发布包 `aemeath-komari-theme-v1.9.0.zip`。
-2. 打开 Komari 后台的主题管理，上传 ZIP 后切换到 `aemeath`。
-3. 在主题设置中按需配置人物图、首页文案、背景、节点排序和默认布局。
-
-### 发布新版本
-
-```bash
-git add .
-git commit -m "Release v1.9.0"
-git push origin master
-git tag v1.9.0
-git push origin v1.9.0
-```
-
-将标签版本与 `komari-theme.json` 中的 `version` 保持一致。标签推送后，在 GitHub 的 **Actions** 页面可以查看构建进度；完成后，主题 ZIP 会出现在 **Releases** 页面。工作流使用 GitHub 自动提供的 `GITHUB_TOKEN`，不需要把个人密码或 PAT 写入仓库。
-
-主题不依赖 Docker，不包含安装脚本、Shell 文件或服务端可执行程序。主题包仅包含主题清单、HTML、CSS、JavaScript、Vue 运行时、预览图与本地人物资源。
+- **独立主题包**：不依赖 Docker，不包含安装脚本、Shell 文件或服务端可执行程序，仅由主题清单、前端静态资源、运行时、预览图与本地视觉资源组成。
 
 ## 主题设置
 
