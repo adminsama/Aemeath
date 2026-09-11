@@ -4,7 +4,7 @@
 
 项目地址：[github.com/adminsama/Aemeath](https://github.com/adminsama/Aemeath)
 
-GitHub Release 会由 Actions 自动构建。推送形如 `v1.8.5` 的 Git 标签后，工作流会校验 `komari-theme.json` 的版本号，生成可直接安装的主题 ZIP，并上传到对应的 [Releases](https://github.com/adminsama/Aemeath/releases)。
+GitHub Release 会由 Actions 自动构建。推送形如 `v1.9.0` 的 Git 标签后，工作流会校验 `komari-theme.json` 的版本号，生成可直接安装的主题 ZIP，并上传到对应的 [Releases](https://github.com/adminsama/Aemeath/releases)。
 
 ![爱弥斯主题预览](./preview.png)
 
@@ -14,7 +14,8 @@ GitHub Release 会由 Actions 自动构建。推送形如 `v1.8.5` 的 Git 标�
 - **完整观测路径**：概览、节点详情、拨测、分布地图与账单页面均可直接进入；没有公开价格的节点时，账单入口自动隐藏。
 - **可读的状态说明**：首屏连接状态直接呈现在线数和待检查节点数，例如 `32 / 33 在线，1 台待检查`。
 - **可缩放图表**：首页信号、拨测延迟、节点负载、节点延迟轨迹均支持悬浮精确值、以指针位置为中心的滚轮缩放，以及双击复位。选中拨测节点后，详情图表会自动置顶并平滑聚焦。
-- **可操作地图**：支持拖拽、滚轮缩放、按钮缩放和复位；优先采用节点上报的经纬度，缺失时以城市、地区、国家逐级匹配定位；同一区域节点自动展开。
+- **3D 分布地球**：基于本地 Three.js 与 50m 世界数据渲染真实球体、高精度国家边界、经纬网、地理标签、航线与节点信标；首次进入会朝向本站节点的球面中心。节点图标与名称使用固定像素覆盖层，缩放地球时不会同步变大；同坐标节点按屏幕像素展开，保留原始经纬度精度。
+- **主题载入动效**：首次数据同步、地球边界校准与拨测详情加载统一使用星炬双轨、绯色心核与信号扫描动画；在系统减少动态效果时自动停用长动画。
 - **节点详情**：支持展示 CPU 型号、核心/线程、架构、操作系统、内核、内存、磁盘、网络接口、公网地址和 24/48 小时记录。
 - **优雅切换**：双列、三列、四列阵列通过 FLIP 重排动画过渡，保留节点卡片身份和当前数据，不会闪烁重建。
 - **多端布局**：桌面、平板和手机均有独立响应式布局。手机导航通过 Vue Teleport 固定在视口底部，不参与顶部栏排版；星野模式带有随机闪烁星光与间歇流星。
@@ -22,7 +23,7 @@ GitHub Release 会由 Actions 自动构建。推送形如 `v1.8.5` 的 Git 标�
 
 ## 安装
 
-1. 下载发布包 `aemeath-komari-theme-v1.8.5.zip`。
+1. 下载发布包 `aemeath-komari-theme-v1.9.0.zip`。
 2. 打开 Komari 后台的主题管理，上传 ZIP 后切换到 `aemeath`。
 3. 在主题设置中按需配置人物图、首页文案、背景、节点排序和默认布局。
 
@@ -30,10 +31,10 @@ GitHub Release 会由 Actions 自动构建。推送形如 `v1.8.5` 的 Git 标�
 
 ```bash
 git add .
-git commit -m "Release v1.8.6"
+git commit -m "Release v1.9.0"
 git push origin master
-git tag v1.8.6
-git push origin v1.8.6
+git tag v1.9.0
+git push origin v1.9.0
 ```
 
 将标签版本与 `komari-theme.json` 中的 `version` 保持一致。标签推送后，在 GitHub 的 **Actions** 页面可以查看构建进度；完成后，主题 ZIP 会出现在 **Releases** 页面。工作流使用 GitHub 自动提供的 `GITHUB_TOKEN`，不需要把个人密码或 PAT 写入仓库。
@@ -73,11 +74,14 @@ preview.png                       # 后台主题预览
 dist/
   index.html                      # Vue 应用入口
   assets/
-    aemeath-v1.8.5.css            # 版本化样式资源
-    aemeath-v1.8.5.js             # 版本化应用逻辑
+    aemeath-v1.9.0.css            # 版本化样式资源
+    aemeath-v1.9.0.js             # 版本化应用逻辑
     aemeath.png                   # 包内默认人物图
+    countries-50m.json            # 高精度世界边界数据
   vendor/
     vue.global.prod.js            # Vue 3 运行时
+    three.min.js                  # 3D 地球渲染运行时
+    topojson-client.min.js        # 世界边界数据解析
 ```
 
 `index.html` 只引用版本化的静态 CSS/JS 文件，方便 CDN 长缓存，并可在主题升级时通过更新文件名绕过旧缓存。

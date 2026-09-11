@@ -14,10 +14,24 @@
     <script src="/themes/aemeath/dist/vendor/vue.global.prod.js"></script>
     <link
       rel="stylesheet"
-      href="/themes/aemeath/dist/assets/aemeath-v1.8.5.css"
+      href="/themes/aemeath/dist/assets/aemeath-v1.9.0.css"
     />
   </head>
   <body>
+    <div id="theme-preloader" class="app-loading" role="status" aria-live="polite">
+      <div class="aemeath-loader">
+        <span class="loader-glyph" aria-hidden="true">
+          <i class="loader-orbit orbit-a"></i>
+          <i class="loader-orbit orbit-b"></i>
+          <i class="loader-star"></i>
+          <i class="loader-core"><b></b></i>
+        </span>
+        <span class="loader-copy">
+          <b>正在建立星辉观测链路 / ESTABLISHING STARLIGHT LINK</b>
+          <small>心核信号接入 / CORE SIGNAL UPLINK</small>
+        </span>
+      </div>
+    </div>
     <div
       id="app"
       v-cloak
@@ -101,7 +115,7 @@
         </nav>
       </Teleport>
       <main class="content">
-        <Transition name="fade" mode="out-in">
+        <Transition name="fade" mode="out-in" @after-enter="viewEntered">
           <section v-if="route==='overview'" key="overview">
             <section class="hero">
               <div class="hero-copy">
@@ -420,7 +434,20 @@
                   <span>{{ t('maxLatency') }} / {{ t('loss') }}</span><b>{{ probeDetailStats.max }} / {{ probeDetailStats.loss }}</b>
                 </div>
               </div>
-              <div v-if="probeDetailLoading" class="empty">{{ t('loading') }}</div>
+              <div v-if="probeDetailLoading" class="empty loader-shell">
+                <div class="aemeath-loader compact" role="status" aria-live="polite">
+                  <span class="loader-glyph" aria-hidden="true">
+                    <i class="loader-orbit orbit-a"></i>
+                    <i class="loader-orbit orbit-b"></i>
+                    <i class="loader-star"></i>
+                    <i class="loader-core"><b></b></i>
+                  </span>
+                  <span class="loader-copy">
+                    <b>{{ t('loading') }}</b>
+                    <small>{{ t('loaderSignal') }}</small>
+                  </span>
+                </div>
+              </div>
               <div v-else-if="!probeDetailRecords.length" class="empty">{{ t('noProbeData') }}</div>
             </section>
             <div class="probe-layout">
@@ -549,48 +576,47 @@
               </div>
             </div>
             <section
-              class="world"
+              class="world globe-world"
               :class="{dragging:mapDrag.active}"
               @wheel.prevent="handleMapWheel"
               @pointerdown="startMapPan"
               @pointermove="moveMapPan"
               @pointerup="endMapPan"
               @pointercancel="endMapPan"
+              @pointerleave="leaveGlobe"
               @dblclick.prevent="resetMap"
             >
               <div class="map-jump-grid" aria-hidden="true"></div>
-              <div
-                class="map-canvas"
-                :class="{dragging:mapDrag.active}"
-                :style="{transform:mapTransform}"
-              >
-                <svg
-                  viewBox="0 0 1000 450"
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                >
-                  <path
-                    class="continent"
-                    d="M70 85l115-38 83 30 20 54-47 32-31 63-57 4-27-45-58-25zM255 259l61 16 33 61-23 97-45-16-8-66-37-44zM441 75l98-23 93 39 27 51-50 30-19 55-54 11-26-36-58-16-35-54zM516 253l74-12 87 45 29 91-50 56-73-23-29-70zM728 91l104-22 116 38 22 65-59 23-32-30-74 18-63-34zM807 261l92 13 35 55-47 39-81-20-23-51z"
-                  ></path>
-                  <path
-                    v-if="mappedNodes.length>1"
-                    class="route-line"
-                    :d="mapRoutes"
-                  ></path></svg
-                ><a
-                  v-for="item in mappedNodes"
-                  :key="item.node.uuid"
-                  class="map-point"
-                  :class="{offline:!isOnline(item.node),cluster:item.clusterSize>1}"
-                  :style="{left:item.x+'%',top:item.y+'%'}"
-                  :href="'#/node/'+item.node.uuid"
-                  @click="openNode(item.node)"
-                  :title="nodeTooltip(item.node)"
-                  ><i></i><span v-if="item.clusterSize===1 || item.clusterIndex===0"
-                    >{{ item.node.name }}<em v-if="item.clusterSize>1">+{{ item.clusterSize-1 }}</em></span
-                  ></a
-                >
+              <div class="globe-stage" ref="globeStage">
+                <canvas ref="globeCanvas" aria-label="3D globe node distribution"></canvas>
+                <div class="globe-aura" aria-hidden="true"></div>
+                <div class="globe-reticle" aria-hidden="true"><i></i></div>
+                <div class="globe-geo-layer" ref="globeGeoLayer" aria-hidden="true"></div>
+                <div class="globe-beacon-layer" ref="globeBeaconLayer"></div>
+                <div class="globe-tooltip" ref="globeTooltip" role="status"></div>
+                <Transition name="loader-fade">
+                  <div v-if="globeLoading" class="globe-loading">
+                    <div class="aemeath-loader" role="status" aria-live="polite">
+                      <span class="loader-glyph" aria-hidden="true">
+                        <i class="loader-orbit orbit-a"></i>
+                        <i class="loader-orbit orbit-b"></i>
+                        <i class="loader-star"></i>
+                        <i class="loader-core"><b></b></i>
+                      </span>
+                      <span class="loader-copy">
+                        <b>{{ t('globeLoading') }}</b>
+                        <small>{{ t('loaderSignal') }}</small>
+                      </span>
+                    </div>
+                  </div>
+                </Transition>
+                <div class="globe-fallback" ref="globeFallback">
+                  {{ t('globeUnavailable') }}
+                </div>
+              </div>
+              <div class="globe-caption">
+                <span><i></i>{{ t('globeOrbit') }}</span>
+                <small>{{ t('globeHint') }}</small>
               </div>
               <div class="map-controls" :aria-label="t('mapZoom')">
                 <button
@@ -909,6 +935,8 @@
         </footer>
       </main>
     </div>
-    <script src="/themes/aemeath/dist/assets/aemeath-v1.8.5.js"></script>
+    <script src="/themes/aemeath/dist/vendor/three.min.js"></script>
+    <script src="/themes/aemeath/dist/vendor/topojson-client.min.js"></script>
+    <script src="/themes/aemeath/dist/assets/aemeath-v1.9.0.js"></script>
   </body>
 </html>

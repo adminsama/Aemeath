@@ -1,5 +1,16 @@
-const { createApp } = Vue;
+const { createApp, markRaw } = Vue;
 const FALLBACK_IMAGE = "/themes/aemeath/dist/assets/aemeath.png";
+const GLOBE_GEO_LABELS = [
+  { id: "north-america", lat: 45, lon: -104, zh: "北美洲", en: "NORTH AMERICA" },
+  { id: "south-america", lat: -18, lon: -60, zh: "南美洲", en: "SOUTH AMERICA" },
+  { id: "europe", lat: 52, lon: 17, zh: "欧洲", en: "EUROPE" },
+  { id: "africa", lat: 7, lon: 22, zh: "非洲", en: "AFRICA" },
+  { id: "asia", lat: 43, lon: 88, zh: "亚洲", en: "ASIA" },
+  { id: "oceania", lat: -28, lon: 137, zh: "大洋洲", en: "OCEANIA" },
+  { id: "pacific", lat: 3, lon: -154, zh: "太平洋", en: "PACIFIC" },
+  { id: "atlantic", lat: 12, lon: -33, zh: "大西洋", en: "ATLANTIC" },
+  { id: "indian", lat: -22, lon: 78, zh: "印度洋", en: "INDIAN OCEAN" },
+];
 const copy = {
   "zh-CN": {
     overview: "概览",
@@ -109,6 +120,11 @@ const copy = {
     publicAddress: "公开地址",
     days: "天后",
     expired: "已到期",
+    globeOrbit: "星炬全球观测轨道",
+    globeHint: "拖动旋转 · 滚轮缩放 · 点击信标查看节点",
+    globeLoading: "正在校准星图与地理边界...",
+    loaderSignal: "心核信号正在接入",
+    globeUnavailable: "当前浏览器无法启用 3D 地球，仍可通过下方列表查看节点。",
   },
   en: {
     overview: "OVERVIEW",
@@ -219,6 +235,11 @@ const copy = {
     publicAddress: "PUBLIC ADDRESS",
     days: "DAYS LEFT",
     expired: "EXPIRED",
+    globeOrbit: "STELLAR GLOBAL OBSERVATION ORBIT",
+    globeHint: "DRAG TO ROTATE · WHEEL TO ZOOM · SELECT A BEACON",
+    globeLoading: "CALIBRATING STAR MAP AND GEOGRAPHIC BORDERS...",
+    loaderSignal: "CORE SIGNAL UPLINK",
+    globeUnavailable: "The 3D globe is unavailable. Use the node list below.",
   },
 };
 const demoNodes = [
@@ -354,13 +375,16 @@ createApp({
         "detail-ping": { start: 0, end: 1 },
       },
       mapScale: 1,
-      mapOffset: { x: 0, y: 0 },
+      globeLoading: true,
+      globe: null,
+      globeInitTimer: null,
       mapDrag: {
         active: false,
         startX: 0,
         startY: 0,
-        originX: 0,
-        originY: 0,
+        rotationX: 0,
+        rotationY: 0,
+        moved: false,
       },
       chartHover: {
         key: "",
@@ -692,47 +716,24 @@ createApp({
     mappedNodes() {
       const points = this.orderedNodes
         .map((n) => ({ node: n, ...this.coordinate(n) }))
-        .filter((x) => x.x !== null);
+        .filter((item) => item.lat !== null && item.lon !== null);
       const groups = new Map();
       points.forEach((item) => {
-        const key = `${item.x.toFixed(2)}:${item.y.toFixed(2)}`;
+        const key = `${item.lat.toFixed(4)}:${item.lon.toFixed(4)}`;
         const group = groups.get(key) || [];
         group.push(item);
         groups.set(key, group);
       });
       return Array.from(groups.values()).flatMap((group) =>
-        group.map((item, index) => {
-          const count = group.length;
-          const radius = count > 1 ? Math.min(2.8, 0.72 + count * 0.12) : 0;
-          const angle = count > 1 ? (index / count) * Math.PI * 2 - Math.PI / 2 : 0;
-          return {
-            ...item,
-            x: Math.max(2, Math.min(98, item.x + Math.cos(angle) * radius)),
-            y: Math.max(2, Math.min(98, item.y + Math.sin(angle) * radius)),
-            clusterSize: count,
-            clusterIndex: index,
-          };
-        }),
+        group.map((item, index) => ({
+          ...item,
+          clusterSize: group.length,
+          clusterIndex: index,
+        })),
       );
-    },
-    mapRoutes() {
-      if (this.mappedNodes.length < 2) return "";
-      return this.mappedNodes
-        .slice(0, Math.min(12, this.mappedNodes.length))
-        .map(
-          (p, i) =>
-            (i ? "L" : "M") +
-            (p.x * 10).toFixed(1) +
-            " " +
-            (p.y * 4.5).toFixed(1),
-        )
-        .join(" ");
     },
     mapScaleLabel() {
       return Math.round(this.mapScale * 100) + "%";
-    },
-    mapTransform() {
-      return `translate(${this.mapOffset.x}px, ${this.mapOffset.y}px) scale(${this.mapScale})`;
     },
     paidNodes() {
       return this.nodes.filter((n) => this.number(n.price) > 0);
@@ -912,6 +913,18 @@ createApp({
       return this.latencyStats(
         this.histories[this.selectedId]?.[this.detailHours]?.ping || [],
       );
+    },
+  },
+  watch: {
+    route(next) {
+      if (next === "map") this.scheduleGlobeInit();
+      else this.destroyGlobe();
+    },
+    mappedNodes() {
+      if (this.route === "map") this.$nextTick(() => this.rebuildGlobeNodes());
+    },
+    onlineIds() {
+      if (this.route === "map") this.$nextTick(() => this.rebuildGlobeNodes());
     },
   },
   methods: {
@@ -1390,66 +1403,523 @@ createApp({
       this.signalLoading = false;
       if (!this.signalHistory.length) this.pushLiveSignal();
     },
-    limitMapOffset(offset, scale, host) {
-      const rect = host?.getBoundingClientRect?.();
-      const width = rect?.width || 900;
-      const height = rect?.height || 430;
-      const maxX = Math.max(220, width * Math.max(0.42, scale * 0.62));
-      const maxY = Math.max(160, height * Math.max(0.48, scale * 0.75));
+    globeVector(lat, lon, radius = 2) {
+      const latitude = (this.number(lat) * Math.PI) / 180;
+      const longitude = (this.number(lon) * Math.PI) / 180;
+      const cosLatitude = Math.cos(latitude);
+      return new THREE.Vector3(
+        radius * cosLatitude * Math.sin(longitude),
+        radius * Math.sin(latitude),
+        radius * cosLatitude * Math.cos(longitude),
+      );
+    },
+    globeLine(points, material, closed = false) {
+      const vertices = closed ? [...points, points[0]] : points;
+      const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+      return new THREE.Line(geometry, material);
+    },
+    scheduleGlobeInit() {
+      clearTimeout(this.globeInitTimer);
+      this.$nextTick(() => {
+        this.globeInitTimer = setTimeout(() => this.initGlobe(), 120);
+      });
+    },
+    viewEntered() {
+      if (this.route === "map") this.initGlobe();
+    },
+    initGlobe() {
+      const canvas = this.$refs.globeCanvas;
+      const stage = this.$refs.globeStage;
+      if (!canvas || !stage || this.route !== "map") return;
+      if (this.globe?.canvas === canvas) {
+        this.resizeGlobe();
+        this.rebuildGlobeNodes();
+        return;
+      }
+      this.destroyGlobe();
+      this.mapScale = 1;
+      this.globeLoading = true;
+      const fallback = this.$refs.globeFallback;
+      try {
+        if (!window.THREE) throw new Error("Three.js unavailable");
+        const renderer = new THREE.WebGLRenderer({
+          canvas,
+          alpha: true,
+          antialias: true,
+          powerPreference: "high-performance",
+        });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+        renderer.setClearColor(0x000000, 0);
+        if (THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+        camera.position.set(0, 0, 6.4);
+        const world = new THREE.Group();
+        world.rotation.set(0.34, -1.35, 0);
+        scene.add(world);
+
+        const globeMaterial = new THREE.MeshPhongMaterial({
+          color: 0x07151e,
+          emissive: 0x031119,
+          shininess: 34,
+          transparent: true,
+          opacity: 0.98,
+        });
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(2, 72, 48),
+          globeMaterial,
+        );
+        world.add(sphere);
+
+        const atmosphere = new THREE.Mesh(
+          new THREE.SphereGeometry(2.13, 64, 40),
+          new THREE.ShaderMaterial({
+            transparent: true,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            uniforms: {
+              glowColor: { value: new THREE.Color(0x79efe2) },
+            },
+            vertexShader:
+              "varying vec3 vNormal; varying vec3 vWorldPosition; void main(){vNormal=normalize(normalMatrix*normal); vec4 worldPosition=modelMatrix*vec4(position,1.0); vWorldPosition=worldPosition.xyz; gl_Position=projectionMatrix*viewMatrix*worldPosition;}",
+            fragmentShader:
+              "uniform vec3 glowColor; varying vec3 vNormal; varying vec3 vWorldPosition; void main(){vec3 viewDirection=normalize(cameraPosition-vWorldPosition); float intensity=pow(0.72-dot(vNormal,viewDirection),2.25); gl_FragColor=vec4(glowColor,intensity*0.48);}",
+          }),
+        );
+        scene.add(atmosphere);
+
+        const gridMaterial = new THREE.LineBasicMaterial({
+          color: 0x69d8d0,
+          transparent: true,
+          opacity: 0.13,
+          depthWrite: false,
+        });
+        for (let lat = -60; lat <= 60; lat += 30) {
+          const points = [];
+          for (let lon = -180; lon <= 180; lon += 3)
+            points.push(this.globeVector(lat, lon, 2.012));
+          world.add(this.globeLine(points, gridMaterial));
+        }
+        for (let lon = -150; lon <= 180; lon += 30) {
+          const points = [];
+          for (let lat = -90; lat <= 90; lat += 3)
+            points.push(this.globeVector(lat, lon, 2.012));
+          world.add(this.globeLine(points, gridMaterial));
+        }
+
+        const markerGroup = new THREE.Group();
+        const geoLabelGroup = new THREE.Group();
+        const routeGroup = new THREE.Group();
+        world.add(routeGroup, markerGroup, geoLabelGroup);
+
+        const orbitMaterial = new THREE.MeshBasicMaterial({
+          color: 0xe18baa,
+          transparent: true,
+          opacity: 0.2,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        const orbit = new THREE.Mesh(
+          new THREE.TorusGeometry(2.63, 0.007, 6, 196),
+          orbitMaterial,
+        );
+        orbit.rotation.set(1.08, 0.42, 0.18);
+        scene.add(orbit);
+
+        scene.add(new THREE.HemisphereLight(0xbefef5, 0x130817, 1.35));
+        const roseLight = new THREE.DirectionalLight(0xff8db8, 1.9);
+        roseLight.position.set(-3, 2.5, 4);
+        scene.add(roseLight);
+        const cyanLight = new THREE.DirectionalLight(0x67e5da, 1.2);
+        cyanLight.position.set(4, -1, 3);
+        scene.add(cyanLight);
+
+        const state = markRaw({
+          canvas,
+          stage,
+          scene,
+          camera,
+          renderer,
+          world,
+          sphere,
+          atmosphere,
+          orbit,
+          markerGroup,
+          geoLabelGroup,
+          routeGroup,
+          beaconMarkers: [],
+          geoMarkers: [],
+          tick: 0,
+          worldVector: new THREE.Vector3(),
+          projectedVector: new THREE.Vector3(),
+          frame: 0,
+          disposed: false,
+          resumeAt: Date.now() + 4500,
+          baseDistance: 6.4,
+          hasFittedNodes: false,
+          initialRotation: { x: 0.34, y: -1.35 },
+          resizeObserver: null,
+        });
+        this.globe = state;
+        if (fallback) fallback.classList.remove("visible");
+        this.resizeGlobe();
+        if (window.ResizeObserver) {
+          state.resizeObserver = new ResizeObserver(() => this.resizeGlobe());
+          state.resizeObserver.observe(stage);
+        }
+        this.loadGlobeLand(state);
+        this.buildGlobeGeoLabels(state);
+        this.rebuildGlobeNodes();
+        const animate = () => {
+          if (state.disposed) return;
+          state.frame = requestAnimationFrame(animate);
+          if (!this.mapDrag.active && Date.now() > state.resumeAt)
+            state.world.rotation.y += 0.00045;
+          state.orbit.rotation.z += 0.00034;
+          state.renderer.render(state.scene, state.camera);
+          state.tick += 1;
+          if (state.tick % 2 === 0) this.positionGlobeOverlays();
+        };
+        animate();
+      } catch (error) {
+        console.warn("Aemeath globe initialization failed", error);
+        this.globeLoading = false;
+        if (fallback) fallback.classList.add("visible");
+      }
+    },
+    async loadGlobeLand(state) {
+      try {
+        const response = await fetch(
+          "/themes/aemeath/dist/assets/countries-50m.json",
+        );
+        if (!response.ok || state.disposed || !window.topojson)
+          throw new Error("Globe border data unavailable");
+        const topology = await response.json();
+        if (state.disposed) return;
+        const collection = topojson.feature(
+          topology,
+          topology.objects.countries,
+        );
+        const segments = [];
+        const addRing = (ring) => {
+          for (let index = 1; index < ring.length; index++) {
+            const from = ring[index - 1];
+            const to = ring[index];
+            if (Math.abs(from[0] - to[0]) > 180) continue;
+            segments.push(
+              this.globeVector(from[1], from[0], 2.022),
+              this.globeVector(to[1], to[0], 2.022),
+            );
+          }
+        };
+        collection.features.forEach((feature) => {
+          const coordinates = feature.geometry?.coordinates || [];
+          if (feature.geometry?.type === "Polygon")
+            coordinates.forEach(addRing);
+          if (feature.geometry?.type === "MultiPolygon")
+            coordinates.forEach((polygon) => polygon.forEach(addRing));
+        });
+        const geometry = new THREE.BufferGeometry().setFromPoints(segments);
+        const material = new THREE.LineBasicMaterial({
+          color: 0xb6eee8,
+          transparent: true,
+          opacity: 0.56,
+        });
+        const borders = new THREE.LineSegments(geometry, material);
+        borders.userData.globeLand = true;
+        state.world.add(borders);
+      } catch (error) {
+        console.warn("Aemeath globe border loading failed", error);
+      } finally {
+        if (this.globe === state && !state.disposed) this.globeLoading = false;
+      }
+    },
+    buildGlobeGeoLabels(state) {
+      const layer = this.$refs.globeGeoLayer;
+      if (!layer || !state || state.disposed) return;
+      layer.replaceChildren();
+      this.disposeGlobeGroup(state.geoLabelGroup);
+      state.geoMarkers = GLOBE_GEO_LABELS.map((item) => {
+        const anchor = new THREE.Object3D();
+        anchor.position.copy(this.globeVector(item.lat, item.lon, 2.036));
+        state.geoLabelGroup.add(anchor);
+        const element = document.createElement("span");
+        element.className = `globe-geo-label ${item.id}`;
+        element.textContent = this.language === "zh-CN" ? item.zh : item.en;
+        layer.appendChild(element);
+        return { anchor, element, item };
+      });
+      this.positionGlobeOverlays();
+    },
+    disposeGlobeGroup(group) {
+      if (!group) return;
+      while (group.children.length) {
+        const child = group.children.pop();
+        child.traverse((object) => {
+          object.geometry?.dispose?.();
+          if (Array.isArray(object.material))
+            object.material.forEach((material) => material.dispose?.());
+          else object.material?.dispose?.();
+        });
+      }
+    },
+    fitGlobeToNodes(state, points) {
+      if (!state || state.hasFittedNodes || !points.length) return;
+      const center = points.reduce(
+        (sum, item) => sum.add(this.globeVector(item.lat, item.lon, 1)),
+        new THREE.Vector3(),
+      );
+      if (center.lengthSq() < 0.01) {
+        center.copy(this.globeVector(points[0].lat, points[0].lon, 1));
+      }
+      center.normalize();
+      const latitude = Math.asin(Math.max(-1, Math.min(1, center.y)));
+      const longitude = Math.atan2(center.x, center.z);
+      const rotation = {
+        x: Math.max(-0.95, Math.min(0.95, latitude)),
+        y: -longitude,
+      };
+      state.world.rotation.set(rotation.x, rotation.y, 0);
+      state.initialRotation = rotation;
+      state.hasFittedNodes = true;
+    },
+    rebuildGlobeNodes() {
+      const state = this.globe;
+      if (!state || state.disposed) return;
+      this.disposeGlobeGroup(state.markerGroup);
+      this.disposeGlobeGroup(state.routeGroup);
+      state.beaconMarkers = [];
+      const beaconLayer = this.$refs.globeBeaconLayer;
+      beaconLayer?.replaceChildren();
+      const points = this.mappedNodes;
+      this.fitGlobeToNodes(state, points);
+      state.canvas.dataset.markerCount = String(points.length);
+      const hub = points[0] ? this.globeVector(points[0].lat, points[0].lon, 2.035) : null;
+      points.forEach((item, index) => {
+        const online = this.isOnline(item.node);
+        const position = this.globeVector(item.lat, item.lon, 2.045);
+        const anchorObject = new THREE.Object3D();
+        anchorObject.position.copy(position);
+        state.markerGroup.add(anchorObject);
+        if (beaconLayer) {
+          const anchor = document.createElement("a");
+          anchor.className = `globe-beacon${online ? " online" : " offline"}`;
+          anchor.href = `#/node/${encodeURIComponent(item.node.uuid)}`;
+          anchor.title = this.nodeTooltip(item.node);
+          const core = document.createElement("i");
+          const label = document.createElement("span");
+          const name = document.createElement("b");
+          name.textContent = item.node.name || item.node.uuid;
+          label.appendChild(name);
+          if (item.clusterIndex === 0 && item.clusterSize > 1) {
+            const count = document.createElement("em");
+            count.textContent = `+${item.clusterSize - 1}`;
+            label.appendChild(count);
+          }
+          anchor.append(core, label);
+          anchor.addEventListener("click", (event) => {
+            event.preventDefault();
+            this.go("node/" + encodeURIComponent(item.node.uuid));
+          });
+          anchor.addEventListener("pointerenter", (event) =>
+            this.showGlobeTooltip(event, item.node),
+          );
+          anchor.addEventListener("pointermove", (event) =>
+            this.showGlobeTooltip(event, item.node),
+          );
+          anchor.addEventListener("pointerleave", () => this.hideGlobeTooltip());
+          beaconLayer.appendChild(anchor);
+          state.beaconMarkers.push({
+            anchor: anchorObject,
+            element: anchor,
+            clusterIndex: item.clusterIndex,
+            clusterSize: item.clusterSize,
+          });
+        }
+
+        if (hub && index > 0 && index < 15) {
+          const end = position.clone().normalize().multiplyScalar(2.035);
+          let middle = hub.clone().add(end);
+          if (middle.lengthSq() < 0.08)
+            middle = hub.clone().cross(new THREE.Vector3(0, 1, 0));
+          middle.normalize().multiplyScalar(2.35 + hub.distanceTo(end) * 0.12);
+          const curve = new THREE.QuadraticBezierCurve3(hub, middle, end);
+          const route = this.globeLine(
+            curve.getPoints(48),
+            new THREE.LineBasicMaterial({
+              color: index % 3 === 0 ? 0xf0a4bd : 0x65dcd3,
+              transparent: true,
+              opacity: 0.3,
+              depthWrite: false,
+            }),
+          );
+          state.routeGroup.add(route);
+        }
+      });
+      this.positionGlobeOverlays();
+    },
+    clusterScreenOffset(index, count) {
+      if (!index || count < 2) return { x: 0, y: 0 };
+      const position = index - 1;
+      const ring = Math.floor(position / 8);
+      const slots = Math.min(8, count - 1 - ring * 8);
+      const angle = ((position % 8) / Math.max(1, slots)) * Math.PI * 2 - Math.PI / 2;
+      const radius = 18 + ring * 13;
       return {
-        x: Math.max(-maxX, Math.min(maxX, offset.x)),
-        y: Math.max(-maxY, Math.min(maxY, offset.y)),
+        x: Math.round(Math.cos(angle) * radius),
+        y: Math.round(Math.sin(angle) * radius),
       };
     },
-    zoomMap(delta, anchor) {
-      const previous = this.mapScale;
-      const next = Math.max(0.7, Math.min(4.8, +(previous + delta).toFixed(2)));
-      if (next === previous) return;
-      let offset = this.mapOffset;
-      const host = anchor?.currentTarget;
-      if (host?.getBoundingClientRect) {
-        const rect = host.getBoundingClientRect();
-        const point = {
-          x: anchor.clientX - rect.left - rect.width / 2,
-          y: anchor.clientY - rect.top - rect.height / 2,
-        };
-        offset = {
-          x: point.x - ((point.x - this.mapOffset.x) * next) / previous,
-          y: point.y - ((point.y - this.mapOffset.y) * next) / previous,
-        };
-      }
+    positionGlobeOverlays() {
+      const state = this.globe;
+      if (!state || state.disposed) return;
+      state.scene.updateMatrixWorld(true);
+      const project = (anchor, element, offset = { x: 0, y: 0 }) => {
+        const worldPosition = state.worldVector;
+        anchor.getWorldPosition(worldPosition);
+        const frontFacing = worldPosition.z > 0.08;
+        const projected = state.projectedVector.copy(worldPosition).project(state.camera);
+        const visible =
+          frontFacing &&
+          projected.z > -1 &&
+          projected.z < 1 &&
+          Math.abs(projected.x) < 1.02 &&
+          Math.abs(projected.y) < 1.02;
+        element.hidden = !visible;
+        if (!visible) return projected;
+        element.style.left = `calc(${(projected.x * 0.5 + 0.5) * 100}% + ${offset.x}px)`;
+        element.style.top = `calc(${(-projected.y * 0.5 + 0.5) * 100}% + ${offset.y}px)`;
+        element.classList.toggle("align-left", projected.x > 0.46 || offset.x > 4);
+        element.style.zIndex = String(20 + Math.round(worldPosition.z * 10));
+        return projected;
+      };
+      const expanded = this.mapScale >= 1.14;
+      state.beaconMarkers.forEach(
+        ({ anchor, element, clusterIndex, clusterSize }) => {
+          const offset = this.clusterScreenOffset(clusterIndex, clusterSize);
+          project(anchor, element, offset);
+          element.classList.toggle(
+            "label-visible",
+            clusterIndex === 0 || expanded,
+          );
+        },
+      );
+      state.geoMarkers.forEach(({ anchor, element, item }) => {
+        element.textContent = this.language === "zh-CN" ? item.zh : item.en;
+        project(anchor, element);
+      });
+    },
+    resizeGlobe() {
+      const state = this.globe;
+      if (!state || state.disposed) return;
+      const rect = state.stage.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      state.renderer.setSize(width, height, false);
+      state.camera.aspect = width / height;
+      const verticalFov = THREE.MathUtils.degToRad(state.camera.fov);
+      const horizontalFov =
+        2 * Math.atan(Math.tan(verticalFov / 2) * state.camera.aspect);
+      const limitingFov = Math.min(verticalFov, horizontalFov);
+      state.baseDistance = 2.48 / Math.tan(limitingFov / 2) + 0.26;
+      state.camera.position.z = state.baseDistance / this.mapScale;
+      state.camera.updateProjectionMatrix();
+      this.positionGlobeOverlays();
+    },
+    destroyGlobe() {
+      const state = this.globe;
+      if (!state) return;
+      state.disposed = true;
+      cancelAnimationFrame(state.frame);
+      state.resizeObserver?.disconnect?.();
+      state.scene.traverse((object) => {
+        object.geometry?.dispose?.();
+        if (Array.isArray(object.material))
+          object.material.forEach((material) => material.dispose?.());
+        else object.material?.dispose?.();
+      });
+      state.renderer.dispose();
+      this.globe = null;
+    },
+    showGlobeTooltip(event, node) {
+      const tooltip = this.$refs.globeTooltip;
+      const stage = this.globe?.stage;
+      if (!stage || !tooltip || !node || this.mapDrag.active) return;
+      const rect = stage.getBoundingClientRect();
+      tooltip.textContent = this.nodeTooltip(node).replaceAll(" | ", "\n");
+      tooltip.style.left = `${Math.min(rect.width - 218, Math.max(10, event.clientX - rect.left + 14))}px`;
+      tooltip.style.top = `${Math.min(rect.height - 122, Math.max(10, event.clientY - rect.top + 14))}px`;
+      tooltip.classList.add("visible");
+    },
+    hideGlobeTooltip() {
+      this.$refs.globeTooltip?.classList.remove("visible");
+    },
+    zoomMap(delta) {
+      const next = Math.max(0.72, Math.min(1.75, +(this.mapScale + delta).toFixed(2)));
+      if (next === this.mapScale) return;
       this.mapScale = next;
-      this.mapOffset = this.limitMapOffset(offset, next, host);
+      if (this.globe) {
+        this.globe.camera.position.z = this.globe.baseDistance / next;
+        this.globe.resumeAt = Date.now() + 6500;
+        this.positionGlobeOverlays();
+      }
     },
     handleMapWheel(event) {
-      this.zoomMap(event.deltaY < 0 ? 0.18 : -0.18, event);
+      this.zoomMap(event.deltaY < 0 ? 0.1 : -0.1);
     },
     startMapPan(event) {
       if (event.button !== 0 || event.target.closest("a, button")) return;
+      const state = this.globe;
+      if (!state) return;
       this.mapDrag = {
         active: true,
         startX: event.clientX,
         startY: event.clientY,
-        originX: this.mapOffset.x,
-        originY: this.mapOffset.y,
+        rotationX: state.world.rotation.x,
+        rotationY: state.world.rotation.y,
+        moved: false,
       };
+      state.resumeAt = Date.now() + 7000;
+      state.canvas.style.cursor = "grabbing";
+      this.$refs.globeTooltip?.classList.remove("visible");
       event.currentTarget.setPointerCapture?.(event.pointerId);
     },
     moveMapPan(event) {
-      if (!this.mapDrag.active) return;
-      this.mapOffset = this.limitMapOffset({
-        x: this.mapDrag.originX + event.clientX - this.mapDrag.startX,
-        y: this.mapDrag.originY + event.clientY - this.mapDrag.startY,
-      }, this.mapScale, event.currentTarget);
+      const state = this.globe;
+      if (!this.mapDrag.active || !state) return;
+      const dx = event.clientX - this.mapDrag.startX;
+      const dy = event.clientY - this.mapDrag.startY;
+      state.world.rotation.y = this.mapDrag.rotationY + dx * 0.006;
+      state.world.rotation.x = Math.max(
+        -1.2,
+        Math.min(1.2, this.mapDrag.rotationX + dy * 0.005),
+      );
+      if (Math.abs(dx) + Math.abs(dy) > 5) this.mapDrag.moved = true;
     },
     endMapPan(event) {
       if (!this.mapDrag.active) return;
+      const moved = this.mapDrag.moved;
       event.currentTarget.releasePointerCapture?.(event.pointerId);
       this.mapDrag = { ...this.mapDrag, active: false };
+      if (this.globe) this.globe.canvas.style.cursor = "grab";
+      if (moved || event.type === "pointercancel") this.hideGlobeTooltip();
+    },
+    leaveGlobe() {
+      if (!this.mapDrag.active) this.hideGlobeTooltip();
     },
     resetMap() {
       this.mapScale = 1;
-      this.mapOffset = { x: 0, y: 0 };
+      if (!this.globe) return;
+      this.globe.camera.position.z = this.globe.baseDistance;
+      this.globe.world.rotation.set(
+        this.globe.initialRotation.x,
+        this.globe.initialRotation.y,
+        0,
+      );
+      this.globe.resumeAt = Date.now() + 4500;
+      this.positionGlobeOverlays();
     },
     uptime(s) {
       let n = Math.floor(this.number(s));
@@ -1476,6 +1946,7 @@ createApp({
       this.language = this.language === "zh-CN" ? "en" : "zh-CN";
       localStorage.setItem("language", this.language);
       document.documentElement.lang = this.language;
+      this.positionGlobeOverlays();
     },
     applyPublic(data) {
       this.settings = data.theme_settings || {};
@@ -1517,6 +1988,12 @@ createApp({
         this.usingDemo = true;
         this.connected = false;
         this.pushLiveSignal();
+      } finally {
+        const preloader = document.getElementById("theme-preloader");
+        if (preloader) {
+          preloader.classList.add("is-leaving");
+          setTimeout(() => preloader.remove(), 360);
+        }
       }
     },
     normalizeLive(raw) {
@@ -1779,10 +2256,7 @@ createApp({
         .join(" ");
     },
     coordinate(n) {
-      const toMap = (lat, lon) => ({
-        x: Math.max(2, Math.min(98, ((lon + 180) / 360) * 100)),
-        y: Math.max(3, Math.min(97, ((90 - lat) / 180) * 100)),
-      });
+      const toMap = (lat, lon) => ({ lat, lon });
       const latitude = Number(
         n.latitude ?? n.lat ?? n.geo?.latitude ?? n.geo?.lat ?? n.location?.latitude,
       );
@@ -1835,7 +2309,7 @@ createApp({
         [/united states|usa|america|🇺🇸/, [39.8283, -98.5795]],
       ];
       const found = rules.find((x) => x[0].test(s));
-      return found ? toMap(found[1][0], found[1][1]) : { x: null, y: null };
+      return found ? toMap(found[1][0], found[1][1]) : { lat: null, lon: null };
     },
     billingFor(n) {
       const price = this.number(n.price),
@@ -1873,10 +2347,13 @@ createApp({
     this.applyBackground();
     this.bootstrap();
     this.applyRoute(location.hash);
+    if (this.route === "map") this.scheduleGlobeInit();
     window.addEventListener("hashchange", () => this.applyRoute(location.hash));
     this.clock = setInterval(() => (this.now = new Date()), 1000);
   },
   beforeUnmount() {
+    this.destroyGlobe();
+    clearTimeout(this.globeInitTimer);
     clearInterval(this.clock);
     clearTimeout(this.retryTimer);
     if (this.socket) {

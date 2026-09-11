@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v1.8.5"
+        description: "Release tag, for example v1.9.0"
         required: true
         type: string
 
@@ -47,6 +47,9 @@ jobs:
           test -f preview.png
           test -f dist/assets/aemeath-v${version}.css
           test -f dist/assets/aemeath-v${version}.js
+          test -f dist/assets/countries-50m.json
+          test -f dist/vendor/three.min.js
+          test -f dist/vendor/topojson-client.min.js
           if find . -type f -name '*.sh' -print -quit | grep -q .; then
             echo "Shell scripts are not allowed in the release source" >&2
             exit 1
