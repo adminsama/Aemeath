@@ -14,7 +14,7 @@
     <script src="/themes/aemeath/dist/vendor/vue.global.prod.js"></script>
     <link
       rel="stylesheet"
-      href="/themes/aemeath/dist/assets/aemeath-v1.9.0.css"
+      href="/themes/aemeath/dist/assets/aemeath-v1.9.1.css"
     />
   </head>
   <body>
@@ -328,16 +328,33 @@
                     ><b>{{ averageMemory.toFixed(0) }}%</b>
                   </div>
                 </div>
-                <div class="telemetry">
-                  <h4>{{ t('liveTelemetry') }}</h4>
-                  <a
-                    v-for="node in telemetryNodes"
-                    :key="node.uuid"
-                    :href="'#/node/'+node.uuid"
-                    @click="openNode(node)"
-                    ><i></i><span>{{ node.name||node.uuid }}</span
-                    ><b>{{ nodeCpu(node).toFixed(0) }}% CPU</b></a
+                <div v-if="telemetryEnabled" class="telemetry">
+                  <div class="telemetry-head">
+                    <h4>{{ t('liveTelemetry') }}</h4>
+                    <small
+                      >{{ telemetryMetricLabel }} · {{
+                      t(telemetrySortOrder==='asc'?'ascending':'descending') }} ·
+                      TOP {{ telemetryLimit }}</small
+                    >
+                  </div>
+                  <TransitionGroup
+                    name="telemetry-row"
+                    tag="div"
+                    class="telemetry-list"
                   >
+                    <a
+                      v-for="(row,index) in telemetryRows"
+                      :key="row.node.uuid"
+                      :href="'#/node/'+row.node.uuid"
+                      @click="openNode(row.node)"
+                      :title="telemetryMetricLabel+' · '+row.display"
+                      ><small class="telemetry-rank"
+                        >{{ String(index+1).padStart(2,'0') }}</small
+                      ><i :class="{off:!isOnline(row.node)}"></i
+                      ><span>{{ row.node.name||row.node.uuid }}</span
+                      ><b :class="{missing:!row.reported}">{{ row.display }}</b></a
+                    >
+                  </TransitionGroup>
                 </div>
               </aside>
             </section>
@@ -937,6 +954,6 @@
     </div>
     <script src="/themes/aemeath/dist/vendor/three.min.js"></script>
     <script src="/themes/aemeath/dist/vendor/topojson-client.min.js"></script>
-    <script src="/themes/aemeath/dist/assets/aemeath-v1.9.0.js"></script>
+    <script src="/themes/aemeath/dist/assets/aemeath-v1.9.1.js"></script>
   </body>
 </html>

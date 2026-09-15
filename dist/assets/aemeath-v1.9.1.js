@@ -45,6 +45,23 @@ const copy = {
     averageCpu: "平均 CPU",
     averageMemory: "平均内存",
     liveTelemetry: "实时遥测",
+    telemetryCpu: "CPU 占用",
+    telemetryRam: "内存占用",
+    telemetryDisk: "硬盘占用",
+    telemetryNetworkRate: "上下行总速率",
+    telemetryNetworkUp: "上行速率",
+    telemetryNetworkDown: "下行速率",
+    telemetryTrafficTotal: "累计总流量",
+    telemetryTrafficUp: "累计上行流量",
+    telemetryTrafficDown: "累计下行流量",
+    telemetryTcp: "TCP 连接",
+    telemetryUdp: "UDP 连接",
+    telemetryProcess: "进程数",
+    telemetryLoad1: "1 分钟负载",
+    telemetryUptime: "运行时间",
+    ascending: "升序",
+    descending: "降序",
+    notReported: "未上报",
     empty: "没有匹配的节点。",
     refresh: "刷新",
     probeSub: "公开 Ping 任务与节点连接质量",
@@ -159,6 +176,23 @@ const copy = {
     averageCpu: "AVG. CPU",
     averageMemory: "AVG. MEMORY",
     liveTelemetry: "LIVE TELEMETRY",
+    telemetryCpu: "CPU USAGE",
+    telemetryRam: "MEMORY USAGE",
+    telemetryDisk: "DISK USAGE",
+    telemetryNetworkRate: "TOTAL NETWORK RATE",
+    telemetryNetworkUp: "UPLOAD RATE",
+    telemetryNetworkDown: "DOWNLOAD RATE",
+    telemetryTrafficTotal: "TOTAL TRAFFIC",
+    telemetryTrafficUp: "TOTAL UPLOAD",
+    telemetryTrafficDown: "TOTAL DOWNLOAD",
+    telemetryTcp: "TCP CONNECTIONS",
+    telemetryUdp: "UDP CONNECTIONS",
+    telemetryProcess: "PROCESSES",
+    telemetryLoad1: "1M LOAD",
+    telemetryUptime: "UPTIME",
+    ascending: "ASCENDING",
+    descending: "DESCENDING",
+    notReported: "NOT REPORTED",
     empty: "No matching nodes.",
     refresh: "REFRESH",
     probeSub: "Public ping tasks and node connection quality",
@@ -487,8 +521,78 @@ createApp({
         })
         .map((item) => item.node);
     },
-    telemetryNodes() {
-      return this.orderedNodes.slice(0, 5);
+    telemetryEnabled() {
+      return this.settingBool(this.settings.telemetry_enabled, true);
+    },
+    telemetryMetric() {
+      const metric = this.settings.telemetry_metric || "cpu";
+      return [
+        "cpu",
+        "ram",
+        "disk",
+        "network_rate",
+        "network_up",
+        "network_down",
+        "traffic_total",
+        "traffic_up",
+        "traffic_down",
+        "tcp",
+        "udp",
+        "process",
+        "load1",
+        "uptime",
+      ].includes(metric)
+        ? metric
+        : "cpu";
+    },
+    telemetrySortOrder() {
+      return this.settings.telemetry_sort_order === "asc" ? "asc" : "desc";
+    },
+    telemetryLimit() {
+      return Math.max(
+        1,
+        Math.min(20, Math.floor(this.number(this.settings.telemetry_limit) || 5)),
+      );
+    },
+    telemetryMetricLabel() {
+      const labels = {
+        cpu: "telemetryCpu",
+        ram: "telemetryRam",
+        disk: "telemetryDisk",
+        network_rate: "telemetryNetworkRate",
+        network_up: "telemetryNetworkUp",
+        network_down: "telemetryNetworkDown",
+        traffic_total: "telemetryTrafficTotal",
+        traffic_up: "telemetryTrafficUp",
+        traffic_down: "telemetryTrafficDown",
+        tcp: "telemetryTcp",
+        udp: "telemetryUdp",
+        process: "telemetryProcess",
+        load1: "telemetryLoad1",
+        uptime: "telemetryUptime",
+      };
+      return this.t(labels[this.telemetryMetric]);
+    },
+    telemetryRows() {
+      const direction = this.telemetrySortOrder === "asc" ? 1 : -1;
+      return this.orderedNodes
+        .map((node, index) => {
+          const value = this.telemetryValue(node, this.telemetryMetric);
+          return {
+            node,
+            index,
+            value,
+            reported: Number.isFinite(value),
+            display: this.telemetryDisplay(value, this.telemetryMetric),
+          };
+        })
+        .sort((a, b) => {
+          if (a.reported !== b.reported) return a.reported ? -1 : 1;
+          if (!a.reported) return a.index - b.index;
+          const difference = a.value - b.value;
+          return difference ? difference * direction : a.index - b.index;
+        })
+        .slice(0, this.telemetryLimit);
     },
     signalValues() {
       const values = this.heroVisibleSamples.map((sample) =>
@@ -1255,6 +1359,103 @@ createApp({
         ? this.percent(d.used, d.total || node.disk_total)
         : this.number(d);
     },
+    firstFinite(...values) {
+      for (const value of values) {
+        if (value === undefined || value === null || value === "") continue;
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) return numeric;
+      }
+      return null;
+    },
+    telemetryValue(node, metric) {
+      const live = this.nodeLive(node);
+      const network = live.network || {};
+      const connections = live.connections || {};
+      const up = this.firstFinite(
+        network.up,
+        network.upload,
+        live.net_out,
+        live.netOut,
+        live.network_up,
+      );
+      const down = this.firstFinite(
+        network.down,
+        network.download,
+        live.net_in,
+        live.netIn,
+        live.network_down,
+      );
+      const totalUp = this.firstFinite(
+        network.totalUp,
+        network.total_up,
+        live.net_total_up,
+        live.total_up,
+      );
+      const totalDown = this.firstFinite(
+        network.totalDown,
+        network.total_down,
+        live.net_total_down,
+        live.total_down,
+      );
+      if (metric === "cpu") {
+        if (live.cpu === undefined || live.cpu === null) return null;
+        return this.nodeCpu(node);
+      }
+      if (metric === "ram") {
+        if (live.ram === undefined || live.ram === null) return null;
+        return this.nodeMemory(node);
+      }
+      if (metric === "disk") {
+        if (live.disk === undefined || live.disk === null) return null;
+        return this.nodeDisk(node);
+      }
+      if (metric === "network_rate")
+        return up === null && down === null ? null : (up || 0) + (down || 0);
+      if (metric === "network_up") return up;
+      if (metric === "network_down") return down;
+      if (metric === "traffic_total")
+        return totalUp === null && totalDown === null
+          ? null
+          : (totalUp || 0) + (totalDown || 0);
+      if (metric === "traffic_up") return totalUp;
+      if (metric === "traffic_down") return totalDown;
+      if (metric === "tcp")
+        return this.firstFinite(
+          connections.tcp,
+          live.tcp_connections,
+          live.tcp,
+        );
+      if (metric === "udp")
+        return this.firstFinite(
+          connections.udp,
+          live.udp_connections,
+          live.udp,
+        );
+      if (metric === "process")
+        return this.firstFinite(
+          live.process,
+          live.processes,
+          live.process_count,
+        );
+      if (metric === "load1")
+        return this.firstFinite(live.load?.load1, live.load1, live.load_1);
+      if (metric === "uptime") return this.firstFinite(live.uptime);
+      return null;
+    },
+    telemetryDisplay(value, metric) {
+      if (!Number.isFinite(value)) return this.t("notReported");
+      if (["cpu", "ram", "disk"].includes(metric))
+        return value.toFixed(1) + "%";
+      if (["network_rate", "network_up", "network_down"].includes(metric))
+        return this.rate(value);
+      if (["traffic_total", "traffic_up", "traffic_down"].includes(metric))
+        return this.formatBytes(value);
+      if (metric === "uptime") return this.uptime(value);
+      if (metric === "load1") return value.toFixed(2);
+      return Math.round(value).toLocaleString(
+        this.language === "zh-CN" ? "zh-CN" : "en-US",
+      );
+    },
     metrics(node) {
       return [
         {
@@ -1558,6 +1759,8 @@ createApp({
           disposed: false,
           resumeAt: Date.now() + 4500,
           baseDistance: 6.4,
+          currentScale: 1,
+          targetScale: 1,
           hasFittedNodes: false,
           initialRotation: { x: 0.34, y: -1.35 },
           resizeObserver: null,
@@ -1577,6 +1780,14 @@ createApp({
           state.frame = requestAnimationFrame(animate);
           if (!this.mapDrag.active && Date.now() > state.resumeAt)
             state.world.rotation.y += 0.00045;
+          if (Math.abs(state.currentScale - state.targetScale) > 0.001) {
+            state.currentScale +=
+              (state.targetScale - state.currentScale) * 0.14;
+            state.camera.position.z = state.baseDistance / state.currentScale;
+          } else if (state.currentScale !== state.targetScale) {
+            state.currentScale = state.targetScale;
+            state.camera.position.z = state.baseDistance / state.currentScale;
+          }
           state.orbit.rotation.z += 0.00034;
           state.renderer.render(state.scene, state.camera);
           state.tick += 1;
@@ -1824,7 +2035,7 @@ createApp({
         2 * Math.atan(Math.tan(verticalFov / 2) * state.camera.aspect);
       const limitingFov = Math.min(verticalFov, horizontalFov);
       state.baseDistance = 2.48 / Math.tan(limitingFov / 2) + 0.26;
-      state.camera.position.z = state.baseDistance / this.mapScale;
+      state.camera.position.z = state.baseDistance / state.currentScale;
       state.camera.updateProjectionMatrix();
       this.positionGlobeOverlays();
     },
@@ -1861,7 +2072,7 @@ createApp({
       if (next === this.mapScale) return;
       this.mapScale = next;
       if (this.globe) {
-        this.globe.camera.position.z = this.globe.baseDistance / next;
+        this.globe.targetScale = next;
         this.globe.resumeAt = Date.now() + 6500;
         this.positionGlobeOverlays();
       }
@@ -1912,7 +2123,7 @@ createApp({
     resetMap() {
       this.mapScale = 1;
       if (!this.globe) return;
-      this.globe.camera.position.z = this.globe.baseDistance;
+      this.globe.targetScale = 1;
       this.globe.world.rotation.set(
         this.globe.initialRotation.x,
         this.globe.initialRotation.y,

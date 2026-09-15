@@ -1089,16 +1089,37 @@ button {
 .telemetry {
   padding: 12px 16px;
 }
+.telemetry-head {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--soft);
+}
 .telemetry h4 {
-  margin: 0 0 4px;
+  margin: 0;
   color: var(--muted);
   font:
     9px "DM Mono",
     monospace;
   letter-spacing: 0.7px;
 }
+.telemetry-head small {
+  overflow: hidden;
+  color: color-mix(in srgb, var(--cyan) 68%, var(--muted));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 7px "DM Mono", monospace;
+}
+.telemetry-list {
+  position: relative;
+  overflow-y: auto;
+  max-height: 340px;
+  scrollbar-width: none;
+}
+.telemetry-list::-webkit-scrollbar { display: none; }
 .telemetry a {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px 6px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 9px 0;
@@ -1111,21 +1132,49 @@ button {
 .telemetry i {
   width: 6px;
   height: 6px;
+  flex: 0 0 auto;
   background: var(--green);
   border-radius: 50%;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--green) 55%, transparent);
+}
+.telemetry i.off {
+  background: var(--muted);
+  box-shadow: none;
 }
 .telemetry span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .telemetry b {
-  margin-left: auto;
-  color: var(--muted);
+  max-width: 98px;
+  overflow: hidden;
+  color: var(--text);
   font:
-    9px "DM Mono",
+    8px "DM Mono",
     monospace;
   font-weight: 400;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.telemetry b.missing { color: var(--muted); }
+.telemetry-rank {
+  color: color-mix(in srgb, var(--rose) 72%, var(--muted));
+  font: 7px "DM Mono", monospace;
+}
+.telemetry-row-move,
+.telemetry-row-enter-active,
+.telemetry-row-leave-active {
+  transition:
+    transform 0.38s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.28s ease;
+}
+.telemetry-row-enter-from,
+.telemetry-row-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
 }
 .notice {
   display: flex;
@@ -2169,7 +2218,7 @@ button {
   .node-grid.view-grid-4 .node { min-height: 0; }
 }
 
-/* v1.9.0: spatial globe navigator */
+/* v1.9.1: spatial globe navigator */
 .world.globe-world {
   min-height: 590px;
   aspect-ratio: 16 / 7.7;
@@ -2502,19 +2551,34 @@ button {
   display: block;
 }
 .loader-orbit {
-  inset: 9px;
+  inset: 16% 5%;
   border: 1px solid color-mix(in srgb, var(--cyan) 66%, transparent);
-  border-right-color: transparent;
   border-radius: 50%;
   box-shadow: 0 0 18px color-mix(in srgb, var(--cyan) 12%, transparent);
   animation: loader-orbit-a 3.2s linear infinite;
 }
 .loader-orbit.orbit-b {
-  inset: 19px 5px;
+  inset: 25% 4%;
   border-color: color-mix(in srgb, var(--rose) 58%, transparent);
-  border-left-color: transparent;
   transform: rotate(42deg);
   animation: loader-orbit-b 2.4s linear infinite reverse;
+}
+.loader-orbit:before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--cyan), 0 0 13px var(--cyan);
+}
+.loader-orbit.orbit-b:before {
+  top: auto;
+  bottom: -2px;
+  background: var(--rose);
+  box-shadow: 0 0 6px var(--rose), 0 0 13px var(--rose);
 }
 .loader-star {
   inset: 5px;

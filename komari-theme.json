@@ -2,7 +2,7 @@
   "name": "爱弥斯 / Aemeath",
   "short": "aemeath",
   "description": "基于 Vue 3 的爱弥斯主题监控面板，包含响应式实时状态、平滑过渡与多端适配。",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "author": "Ronana / 夜灭",
   "url": "https://github.com/adminsama/Aemeath",
   "preview": "preview.png",
@@ -77,6 +77,40 @@
         "options": "classic,grid_3,grid_4",
         "default": "classic",
         "help": "classic 保留原有双列布局；grid_3 与 grid_4 分别为三列和四列网格。访客可在前台临时切换，不会修改后台设置。"
+      },
+      {
+        "name": "实时遥测榜单",
+        "type": "title"
+      },
+      {
+        "key": "telemetry_enabled",
+        "name": "显示实时遥测",
+        "type": "switch",
+        "default": true,
+        "help": "关闭后隐藏首页右侧的实时遥测榜单。"
+      },
+      {
+        "key": "telemetry_metric",
+        "name": "遥测排序指标",
+        "type": "select",
+        "options": "cpu,ram,disk,network_rate,network_up,network_down,traffic_total,traffic_up,traffic_down,tcp,udp,process,load1,uptime",
+        "default": "cpu",
+        "help": "可按 CPU、内存、硬盘占用、总速率、上下行速率、累计流量、TCP/UDP、进程数、1 分钟负载或运行时间排序。"
+      },
+      {
+        "key": "telemetry_sort_order",
+        "name": "遥测排序方向",
+        "type": "select",
+        "options": "desc,asc",
+        "default": "desc",
+        "help": "desc 从高到低；asc 从低到高。未上报该指标的节点始终排在末尾。"
+      },
+      {
+        "key": "telemetry_limit",
+        "name": "遥测最多显示节点",
+        "type": "number",
+        "default": 5,
+        "help": "支持 1-20 台；节点较多时仅展示排序后的前若干台。"
       },
       {
         "key": "hero_signal_metric",

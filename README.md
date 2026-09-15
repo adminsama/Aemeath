@@ -18,6 +18,7 @@
 - **优雅切换**：双列、三列、四列阵列通过 FLIP 重排动画过渡，保留节点卡片身份和当前数据，不会闪烁重建。
 - **多端布局**：桌面、平板和手机均有独立响应式布局。手机导航通过 Vue Teleport 固定在视口底部，不参与顶部栏排版；星野模式带有随机闪烁星光与间歇流星。
 - **可配置主题**：中英文、明暗外观、人物图片、站点名称、背景模式、节点排序、默认网格、首屏文案与信号指标均可在 Komari 后台配置。
+- **实时遥测榜单**：可按 CPU、内存、硬盘、上下行速率、累计流量、TCP/UDP、进程数、负载或运行时间实时排序，并可配置升降序、最多显示数量或完全关闭。
 - **独立主题包**：不依赖 Docker，不包含安装脚本、Shell 文件或服务端可执行程序，仅由主题清单、前端静态资源、运行时、预览图与本地视觉资源组成。
 
 ## 主题设置
@@ -31,6 +32,9 @@
 | `show_site_name` | 是否在顶栏显示站点名称。 |
 | `node_sort_mode` | `weight_desc`、`weight_asc` 或 `backend`，分别代表权重降序、权重升序和接口原序。 |
 | `node_display_mode` | `classic`、`grid_3`、`grid_4`，分别为双列、三列、四列默认网格。访客仍可临时切换。 |
+| `telemetry_enabled` | 是否显示首页实时遥测榜单。 |
+| `telemetry_metric` | 实时榜单排序指标，支持资源占用、网络速率、累计流量、连接数、进程、负载与运行时间。 |
+| `telemetry_sort_order` / `telemetry_limit` | 榜单升降序与最多显示节点数量。 |
 | `hero_signal_metric` | 首屏曲线指标：`cpu`、`ram` 或 `traffic`。 |
 | `hero_signal_hours` | 首屏历史窗口，支持 1 至 48 小时。 |
 | `hero_signal_nodes` | 首屏曲线参与节点；留空时聚合全部可用节点。 |
@@ -53,8 +57,8 @@ preview.png                       # 后台主题预览
 dist/
   index.html                      # Vue 应用入口
   assets/
-    aemeath-v1.9.0.css            # 版本化样式资源
-    aemeath-v1.9.0.js             # 版本化应用逻辑
+    aemeath-v1.9.1.css            # 版本化样式资源
+    aemeath-v1.9.1.js             # 版本化应用逻辑
     aemeath.png                   # 包内默认人物图
     countries-50m.json            # 高精度世界边界数据
   vendor/
